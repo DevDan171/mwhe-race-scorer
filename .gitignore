@@ -1,0 +1,19 @@
+node_modules
+dist
+coverage
+*.local
+.DS_Store
+.turbo
+*.tsbuildinfo
+
+# Native build output. Phase 0 does not produce these.
+apps/laptop/src-tauri/target
+apps/laptop/src-tauri/gen
+apps/station/android
+apps/station/.capacitor
+apps/station/ios
+*.apk
+*.aab
+*.exe
+*.msi
+*.nsis

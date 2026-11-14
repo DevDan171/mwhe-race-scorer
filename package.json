@@ -1,0 +1,33 @@
+{
+  "name": "mwhe-race-scorer",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Offline race-day scoring for the Midwest Hard Enduro series.",
+  "packageManager": "pnpm@10.33.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:laptop": "pnpm --filter @mwhe/laptop dev",
+    "dev:station": "pnpm --filter @mwhe/station dev",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @mwhe/core test",
+    "build": "pnpm -r build",
+    "ci": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.14.0",
+    "prettier": "^3.10.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.2"
+  }
+}
