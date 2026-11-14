@@ -33,4 +33,11 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    sql: `
+      ALTER TABLE hub ADD COLUMN app_id TEXT;
+      ALTER TABLE hub ADD COLUMN session_json TEXT;
+    `,
+  },
 ];

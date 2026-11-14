@@ -13,6 +13,7 @@
       "allow": [
         { "url": "https://midwesthardenduro.com/*" },
         { "url": "https://*.midwesthardenduro.com/*" },
+        { "url": "https://base44.app/*" },
         { "url": "http://127.0.0.1:*/*" },
         { "url": "http://localhost:*/*" }
       ]
