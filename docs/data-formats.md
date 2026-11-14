@@ -8,7 +8,8 @@ Timestamps are ISO-8601 with an offset and millisecond precision, for example `2
 
 Downloaded from the site before the race.
 
-- `event`: `id`, `name`, `date`, `timeLimitMinutes`, and `checks`. Each check has `id`, `order`, and `name`. Ids and orders are unique.
+- `event`: `id`, `name`, `date`, `timeLimitMinutes`, and `checks`. Each check has `id`, `order`, and `name`. Ids and orders are unique. `timeLimitMinutes` and `checks` are the primary race's course (the race with the lowest `order`). The scoring engine still reads them from `event`.
+- `races`: one or more races. Each has `id`, `name`, `order`, `timeLimitMinutes`, `laps`, `checks`, and `startRows`. A start row has `id`, `order`, `label`, and `classes`. A class is on at most one row in a race. The primary race's checks and time limit must match `event`.
 - `classes`: the official class list, in canonical order. See `RIDER_CLASSES` in `packages/core/src/classes.ts`.
 - `riders`: series master list. `seriesId`, `name`, `number`, `class`. Rider numbers are unique across the series, not just inside a class. Series ids are unique.
 - `registrations`: who is in this event. `riderNumber`, `name`, `class`, `seriesId`.
@@ -52,11 +53,27 @@ Not inferred. `riderNumber`, `reason`, `appliedBy`, `createdAt`. Scoring sets st
 The laptop writes one for every manual add, delete, or change.
 
 - `who`, `when`, `why`
-- `entity`: `{ type, id }` where type is `punch`, `start_time`, `penalty`, `registration`, `disqualification`, or `result`
+- `entity`: `{ type, id }` where type is `punch`, `start_time`, `penalty`, `registration`, `disqualification`, `result`, or `race`
 - `action`: `add`, `delete`, or `change`
 - `before` and `after`: `before` is null on add, `after` is null on delete
 
 `createChangelogEntry` fills `schemaVersion`.
+
+Race setup changes use entity type `race` and the race id. Registration changes use entity type `registration`. `before` / `after` are the changed fields (`number`, `class`, `timeLimitMinutes`, checks, or start rows).
+
+## Race day state
+
+The laptop stores a `RaceDayState` after a download. It is not sent to the site as-is.
+
+- `downloadedAt`: when this snapshot was saved.
+- `rosterVersion`: starts at `1`. Registration adds, number changes, and class changes increment it. Race setup does not.
+- `snapshot`: the package the site returned, unchanged.
+- `race`: the working package. Edits land here.
+- `dayOfRegistrations`: riders registered on the laptop that day. Each one is also on `race.riders` and `race.registrations`. This is the list a later publish will push. Site-supplied registrations are not copied into it.
+- `changelog`: `ChangelogEntry` rows, in order.
+- `rosterDeltas`: `roster_delta` messages from version 1 through `rosterVersion`. Version 1, base 0, is the full event roster. Later deltas are adds and updates. `rosterChangesSince(state, phoneVersion)` returns the deltas a phone still needs. Apply them with `applyRosterDelta`, in order, starting from a version `0` roster.
+
+A new rider is written to the series list and the event roster in one step, then appended to `dayOfRegistrations`. The laptop blocks any number already on the series list, including riders who are not in this event. Changing a number updates the series rider and the registration. Changing a class updates the registration (what the phone and the results use) and leaves the series class as downloaded. Retired numbers are not reserved; that is the open parallel-event decision.
 
 ## ResultsPayload
 

@@ -7,13 +7,20 @@ export {
   seriesRiderSchema,
   eventRegistrationSchema,
   racePackageSchema,
+  raceSchema,
+  startRowSchema,
   riderClassSchema,
+  defaultRace,
   type Check,
   type Event,
   type SeriesRider,
   type EventRegistration,
+  type Race,
+  type StartRow,
   type RacePackage,
 } from "./schemas/race-package.js";
+
+export { dayOfRegistrationSchema, type DayOfRegistration } from "./schemas/day-of.js";
 
 export {
   phoneRosterRiderSchema,
@@ -71,6 +78,43 @@ export {
 
 export { projectPhoneRoster } from "./roster/project.js";
 export { applyRosterDelta } from "./sync/apply-delta.js";
+
+export {
+  raceDayStateSchema,
+  packageCounts,
+  searchSeriesRiders,
+  isRiderNumberTaken,
+  importRacePackage,
+  rosterChangesSince,
+  addSeriesRiderToEvent,
+  registerNewRider,
+  changeRiderNumber,
+  changeRiderClass,
+  setRaceTimeLimit,
+  setRaceLaps,
+  renameCheck,
+  moveCheck,
+  renameStartRow,
+  moveClassToStartRow,
+  type RaceDayState,
+  type ChangeAudit,
+  type RacePackageCounts,
+} from "./registration/service.js";
+export { RegistrationError, type RegistrationErrorCode } from "./registration/errors.js";
+
+export {
+  getRacePackage,
+  getRacePackageResponseSchema,
+  siteErrorSchema,
+  SiteApiError,
+  type GetRacePackageOptions,
+  type GetRacePackageResponse,
+  type SiteErrorBody,
+} from "./site/client.js";
+export {
+  createSampleRacePackage,
+  SAMPLE_EVENT_ID,
+} from "./fixtures/sample-race-package.js";
 
 export { scoreRace, type ScoreRaceResult } from "./scoring/engine.js";
 export {

@@ -1,88 +1,66 @@
-import { createDemoRace, scoreRace, type ResultsPublicationStatus } from "@mwhe/core";
-import { useMemo, useState } from "react";
+import { useHub } from "./use-hub";
+import { Changelog } from "./screens/Changelog";
+import { RacePrep } from "./screens/RacePrep";
+import { RaceSetup } from "./screens/RaceSetup";
+import { Registration } from "./screens/Registration";
+import { Banner } from "./ui";
 
-import { formatSeconds } from "./format";
+const NAV = [
+  { id: "prep", label: "Race Prep" },
+  { id: "setup", label: "Race Setup" },
+  { id: "registration", label: "Registration" },
+  { id: "changelog", label: "Changelog" },
+] as const;
 
 export function App() {
-  const race = useMemo(() => createDemoRace(), []);
-  const [status, setStatus] = useState<ResultsPublicationStatus>("provisional");
-  const scored = useMemo(
-    () =>
-      scoreRace({
-        ...race,
-        resultsStatus: status,
-        resultsVersion: status === "official" ? 2 : 1,
-      }),
-    [race, status],
-  );
+  const hub = useHub();
+
+  if (hub.bootError) {
+    return (
+      <main className="boot">
+        <Banner tone="error">{hub.bootError}</Banner>
+      </main>
+    );
+  }
+
+  if (!hub.ready) {
+    return (
+      <main className="boot">
+        <p>Opening the race database…</p>
+      </main>
+    );
+  }
 
   return (
-    <main>
-      <header>
-        <p className="eyebrow">Midwest Hard Enduro</p>
-        <h1>Race Scorer</h1>
-        <p className="lede">
-          Phase 0 scaffold. The table is the Timber Ridge demo fixture scored by{" "}
-          <code>@mwhe/core</code>. SQLite and the sync server are not in this build.
-        </p>
-      </header>
-
-      <section className="toolbar" aria-label="Publication">
-        <div>
-          <h2>{race.race.event.name}</h2>
-          <p>
-            {race.race.event.date} · limit {race.race.event.timeLimitMinutes} min ·
-            results v{scored.payload.version}
-          </p>
+    <div className="app">
+      <nav aria-label="Sections">
+        <div className="brand">
+          <span>MWHE</span>
+          <strong>Race Scorer</strong>
         </div>
-        <button
-          type="button"
-          onClick={() =>
-            setStatus((current) =>
-              current === "provisional" ? "official" : "provisional",
-            )
-          }
-        >
-          Mark {status === "provisional" ? "official" : "provisional"}
-        </button>
-      </section>
-
-      <p className={`status status-${status}`}>
-        {status === "provisional"
-          ? "Provisional. Official after the 30 minute protest window."
-          : "Official. The protest window is closed."}
-      </p>
-
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Ovr</th>
-              <th>Cls</th>
-              <th>No.</th>
-              <th>Name</th>
-              <th>Class</th>
-              <th>Checks</th>
-              <th>Time</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {scored.payload.rows.map((entry) => (
-              <tr key={entry.number}>
-                <td>{entry.positionOverall ?? "—"}</td>
-                <td>{entry.positionInClass ?? "—"}</td>
-                <td>{entry.number}</td>
-                <td>{entry.name}</td>
-                <td>{entry.class ?? "UNKNOWN"}</td>
-                <td>{entry.checks}</td>
-                <td>{formatSeconds(entry.totalTimeSeconds)}</td>
-                <td>{entry.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </main>
+        {NAV.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={hub.screen === item.id ? "nav active" : "nav"}
+            aria-current={hub.screen === item.id ? "page" : undefined}
+            onClick={() => hub.setScreen(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+        <p className="nav-foot">
+          {hub.state
+            ? `${hub.state.race.event.name} · v${hub.state.rosterVersion}`
+            : "No race downloaded"}
+        </p>
+      </nav>
+      <main>
+        {hub.screen === "prep" ? <RacePrep /> : null}
+        {hub.screen === "setup" ? <RaceSetup /> : null}
+        {hub.screen === "registration" ? <Registration /> : null}
+        {hub.screen === "changelog" ? <Changelog /> : null}
+      </main>
+    </div>
   );
 }

@@ -13,6 +13,7 @@ export const changelogEntitySchema = z.strictObject({
     "registration",
     "disqualification",
     "result",
+    "race",
   ]),
   id: z.string().min(1),
 });

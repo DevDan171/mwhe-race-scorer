@@ -11,6 +11,67 @@ export const checkSchema = z.strictObject({
   name: z.string().min(1),
 });
 
+export const startRowSchema = z.strictObject({
+  id: z.string().min(1),
+  order: z.number().int().positive(),
+  label: z.string().min(1),
+  classes: z.array(riderClassSchema),
+});
+
+/**
+ * One race inside an event. Checks are the lap order; `laps` is how many
+ * times that list is ridden. The race with the lowest `order` is the course
+ * the scoring engine reads from `event`.
+ */
+export const raceSchema = z
+  .strictObject({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    order: z.number().int().positive(),
+    timeLimitMinutes: z.number().int().positive(),
+    laps: z.number().int().positive(),
+    checks: z.array(checkSchema).min(1),
+    startRows: z.array(startRowSchema).min(1),
+  })
+  .superRefine((race, ctx) => {
+    uniqueField(race.checks, (check) => check.id, ctx, "checks", "Duplicate check id");
+    uniqueField(
+      race.checks,
+      (check) => String(check.order),
+      ctx,
+      "checks",
+      "Duplicate check order",
+    );
+    uniqueField(
+      race.startRows,
+      (row) => row.id,
+      ctx,
+      "startRows",
+      "Duplicate start row id",
+    );
+    uniqueField(
+      race.startRows,
+      (row) => String(row.order),
+      ctx,
+      "startRows",
+      "Duplicate start row order",
+    );
+    const seenClasses = new Set<string>();
+    race.startRows.forEach((row, rowIndex) => {
+      row.classes.forEach((riderClass, classIndex) => {
+        if (seenClasses.has(riderClass)) {
+          ctx.addIssue({
+            code: "custom",
+            message: "A class can only be on one start row in a race",
+            path: ["startRows", rowIndex, "classes", classIndex],
+            input: race,
+          });
+        }
+        seenClasses.add(riderClass);
+      });
+    });
+  });
+
 export const eventSchema = z
   .strictObject({
     id: z.string().min(1),
@@ -62,6 +123,7 @@ export const racePackageSchema = z
   .strictObject({
     schemaVersion: schemaVersionSchema,
     event: eventSchema,
+    races: z.array(raceSchema).min(1),
     classes: z.array(riderClassSchema),
     riders: z.array(seriesRiderSchema),
     registrations: z.array(eventRegistrationSchema),
@@ -77,6 +139,47 @@ export const racePackageSchema = z
         message: "classes must be the official MWHE class list in canonical order",
         path: ["classes"],
         input: race.classes,
+      });
+    }
+
+    uniqueField(race.races, (entry) => entry.id, ctx, "races", "Duplicate race id");
+    uniqueField(
+      race.races,
+      (entry) => String(entry.order),
+      ctx,
+      "races",
+      "Duplicate race order",
+    );
+
+    const primary = race.races.reduce((best, entry) =>
+      entry.order < best.order ? entry : best,
+    );
+    if (primary.timeLimitMinutes !== race.event.timeLimitMinutes) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "event.timeLimitMinutes must match the time limit of the primary race (lowest order)",
+        path: ["event", "timeLimitMinutes"],
+        input: race,
+      });
+    }
+    const checksMatch =
+      primary.checks.length === race.event.checks.length &&
+      primary.checks.every((check, index) => {
+        const eventCheck = race.event.checks[index];
+        return (
+          eventCheck !== undefined &&
+          check.id === eventCheck.id &&
+          check.order === eventCheck.order &&
+          check.name === eventCheck.name
+        );
+      });
+    if (!checksMatch) {
+      ctx.addIssue({
+        code: "custom",
+        message: "event.checks must match the checks of the primary race (lowest order)",
+        path: ["event", "checks"],
+        input: race,
       });
     }
 
@@ -131,7 +234,29 @@ export const racePackageSchema = z
   });
 
 export type Check = z.infer<typeof checkSchema>;
+export type StartRow = z.infer<typeof startRowSchema>;
+export type Race = z.infer<typeof raceSchema>;
 export type Event = z.infer<typeof eventSchema>;
 export type SeriesRider = z.infer<typeof seriesRiderSchema>;
 export type EventRegistration = z.infer<typeof eventRegistrationSchema>;
 export type RacePackage = z.infer<typeof racePackageSchema>;
+
+/** One race that mirrors the event course. Scoring fixtures use this. */
+export function defaultRace(event: Event): Race {
+  return {
+    id: `${event.id}:race`,
+    name: event.name,
+    order: 1,
+    timeLimitMinutes: event.timeLimitMinutes,
+    laps: 1,
+    checks: event.checks.map((check) => ({ ...check })),
+    startRows: [
+      {
+        id: `${event.id}:row-1`,
+        order: 1,
+        label: "Row 1",
+        classes: [...RIDER_CLASSES],
+      },
+    ],
+  };
+}
