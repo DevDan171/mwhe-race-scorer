@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Require a semantic version tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "$TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+][0-9A-Za-z.-]+)?$'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web bundles
+        run: pnpm --filter @mwhe/laptop --filter @mwhe/station build
+
+      - name: Pack web bundles
+        run: |
+          mkdir -p release
+          tar -C apps/laptop -czf "release/mwhe-laptop-web-${GITHUB_REF_NAME}.tar.gz" dist
+          tar -C apps/station -czf "release/mwhe-station-web-${GITHUB_REF_NAME}.tar.gz" dist
+
+      - name: Record native build stubs
+        run: |
+          mkdir -p release
+          cat > release/NATIVE_BUILDS.txt << EOF
+          MWHE Race Scorer ${GITHUB_REF_NAME}
+
+          Attached: Vite web bundles for the laptop and the station.
+
+          NOT BUILT — Windows installer
+          The Tauri 2 shell in apps/laptop/src-tauri is a scaffold. This workflow
+          does not compile it. Still missing:
+          - Rust toolchain and the Tauri CLI on a Windows runner
+          - App icons (apps/laptop/src-tauri/icons is empty; tauri.conf.json points at them)
+          - NSIS (or WiX) for the installer
+          - Code signing certificate
+
+          NOT BUILT — Android APK
+          apps/station has Capacitor config and a web bundle only. Still missing:
+          - The Android project (npx cap add android)
+          - Android SDK, Gradle, and a release keystore
+          - A runner that can assemble the APK
+
+          Versioning: the git tag is the release version (vMAJOR.MINOR.PATCH).
+          schemaVersion in @mwhe/core is independent and bumps on a breaking
+          document change. See docs/release.md.
+          EOF
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          generate_release_notes: true
+          files: release/*
+          body: |
+            ## MWHE Race Scorer ${{ github.ref_name }}
+
+            Web bundles for the laptop hub and the checkpoint station are attached.
+            They are the Vite output, not installers.
+
+            ### Not produced
+            - Windows NSIS installer. The Tauri shell is scaffolded only.
+            - Android APK. Capacitor is configured, and the Android project is not generated.
+
+            Details are in `NATIVE_BUILDS.txt` and `docs/release.md`.
+            Tags use semantic versioning: `vMAJOR.MINOR.PATCH`.
