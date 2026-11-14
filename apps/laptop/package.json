@@ -2,26 +2,35 @@
   "name": "@mwhe/laptop",
   "version": "0.1.0",
   "private": true,
-  "description": "Race-day laptop hub. Phase 0 is a Vite scaffold that imports @mwhe/core.",
+  "description": "Race-day laptop hub. Phase 1 downloads a race package and registers riders offline.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "mock-site": "tsx mock/server.ts",
     "tauri": "tauri"
   },
   "dependencies": {
     "@mwhe/core": "workspace:*",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-http": "^2.5.8",
+    "@tauri-apps/plugin-sql": "^2.4.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4",
+    "@types/node": "^22.19.21",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
+    "tsx": "^4.21.0",
     "typescript": "~6.0.3",
-    "vite": "^8.3.8"
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
   }
 }

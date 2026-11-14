@@ -2,8 +2,8 @@
 name = "mwhe-laptop"
 version = "0.1.0"
 edition = "2021"
-description = "MWHE race-day laptop shell. Phase 0 scaffold only."
-rust-version = "1.77"
+description = "MWHE race-day laptop shell."
+rust-version = "1.90"
 
 [lib]
 name = "mwhe_laptop_lib"
@@ -13,9 +13,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+keyring = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
+tauri-plugin-http = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 
 [features]
 default = ["custom-protocol"]

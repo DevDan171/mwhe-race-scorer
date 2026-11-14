@@ -1,5 +1,6 @@
 import { RIDER_CLASSES, type RiderClass } from "../classes.js";
 import type { Punch } from "../schemas/punch.js";
+import type { Check } from "../schemas/race-package.js";
 import type { ScoreRaceInput } from "../scoring/types.js";
 import { scoreRaceInputSchema } from "../scoring/types.js";
 import { SCHEMA_VERSION } from "../version.js";
@@ -92,6 +93,13 @@ export function createDemoRace(): ScoreRaceInput {
     offsetSeconds: 2700,
   });
 
+  const checks: Check[] = [
+    { id: "cp1", order: 1, name: "CP1 Start Hill" },
+    { id: "cp2", order: 2, name: "CP2 Ridge" },
+    { id: "cp3", order: 3, name: "CP3 Creek" },
+    { id: "cp4", order: 4, name: "CP4 Finish" },
+  ];
+
   return scoreRaceInputSchema.parse({
     schemaVersion: SCHEMA_VERSION,
     resultsVersion: 1,
@@ -105,13 +113,42 @@ export function createDemoRace(): ScoreRaceInput {
         name: "Round 3 — Timber Ridge",
         date: "2026-06-14",
         timeLimitMinutes: 180,
-        checks: [
-          { id: "cp1", order: 1, name: "CP1 Start Hill" },
-          { id: "cp2", order: 2, name: "CP2 Ridge" },
-          { id: "cp3", order: 3, name: "CP3 Creek" },
-          { id: "cp4", order: 4, name: "CP4 Finish" },
-        ],
+        checks,
       },
+      races: [
+        {
+          id: "timber-ridge-2026:race",
+          name: "Round 3 — Timber Ridge",
+          order: 1,
+          timeLimitMinutes: 180,
+          laps: 1,
+          checks,
+          startRows: [
+            {
+              id: "timber-row-1",
+              order: 1,
+              label: "Row 1",
+              classes: ["Pro", "A", "Womens Pro", "Electric Pro"],
+            },
+            {
+              id: "timber-row-2",
+              order: 2,
+              label: "Row 2",
+              classes: [
+                "B",
+                "C",
+                "+40A",
+                "+40B",
+                "+40C",
+                "Womens",
+                "Electric Sportsman",
+                "65/85",
+                "50cc",
+              ],
+            },
+          ],
+        },
+      ],
       riders,
       registrations: riders.map((rider) =>
         registration(rider.seriesId, rider.name, rider.number, rider.class),

@@ -1,0 +1,251 @@
+{
+  "ok": true,
+  "racePackage": {
+    "schemaVersion": 1,
+    "event": {
+      "id": "gnaw-bone-2026",
+      "name": "Round 4 — Gnaw Bone",
+      "date": "2026-09-12",
+      "timeLimitMinutes": 180,
+      "checks": [
+        {
+          "id": "cp1",
+          "order": 1,
+          "name": "CP1 Start Hill"
+        },
+        {
+          "id": "cp2",
+          "order": 2,
+          "name": "CP2 Ridge"
+        },
+        {
+          "id": "cp3",
+          "order": 3,
+          "name": "CP3 Creek"
+        },
+        {
+          "id": "cp4",
+          "order": 4,
+          "name": "CP4 Finish"
+        }
+      ]
+    },
+    "races": [
+      {
+        "id": "gnaw-bone-championship",
+        "name": "Championship",
+        "order": 1,
+        "timeLimitMinutes": 180,
+        "laps": 1,
+        "checks": [
+          {
+            "id": "cp1",
+            "order": 1,
+            "name": "CP1 Start Hill"
+          },
+          {
+            "id": "cp2",
+            "order": 2,
+            "name": "CP2 Ridge"
+          },
+          {
+            "id": "cp3",
+            "order": 3,
+            "name": "CP3 Creek"
+          },
+          {
+            "id": "cp4",
+            "order": 4,
+            "name": "CP4 Finish"
+          }
+        ],
+        "startRows": [
+          {
+            "id": "row-pro",
+            "order": 1,
+            "label": "Row 1",
+            "classes": ["Pro", "A", "Womens Pro", "Electric Pro"]
+          },
+          {
+            "id": "row-sportsman",
+            "order": 2,
+            "label": "Row 2",
+            "classes": ["B", "C", "+40A", "+40B", "+40C", "Womens", "Electric Sportsman"]
+          }
+        ]
+      },
+      {
+        "id": "gnaw-bone-youth",
+        "name": "Youth",
+        "order": 2,
+        "timeLimitMinutes": 60,
+        "laps": 2,
+        "checks": [
+          {
+            "id": "y1",
+            "order": 1,
+            "name": "Youth 1"
+          },
+          {
+            "id": "y2",
+            "order": 2,
+            "name": "Youth 2"
+          }
+        ],
+        "startRows": [
+          {
+            "id": "row-youth",
+            "order": 1,
+            "label": "Youth row",
+            "classes": ["65/85", "50cc"]
+          }
+        ]
+      }
+    ],
+    "classes": [
+      "Pro",
+      "A",
+      "B",
+      "C",
+      "+40A",
+      "+40B",
+      "+40C",
+      "Womens",
+      "Womens Pro",
+      "Electric Sportsman",
+      "Electric Pro",
+      "65/85",
+      "50cc"
+    ],
+    "riders": [
+      {
+        "seriesId": "s-alex",
+        "name": "Alex Hargrove",
+        "number": 1,
+        "class": "Pro"
+      },
+      {
+        "seriesId": "s-blake",
+        "name": "Blake Iverson",
+        "number": 7,
+        "class": "Pro"
+      },
+      {
+        "seriesId": "s-casey",
+        "name": "Casey Nguyen",
+        "number": 42,
+        "class": "A"
+      },
+      {
+        "seriesId": "s-dana",
+        "name": "Dana Brooks",
+        "number": 55,
+        "class": "A"
+      },
+      {
+        "seriesId": "s-erin",
+        "name": "Erin Vasquez",
+        "number": 88,
+        "class": "B"
+      },
+      {
+        "seriesId": "s-fran",
+        "name": "Fran Okonkwo",
+        "number": 90,
+        "class": "B"
+      },
+      {
+        "seriesId": "s-gale",
+        "name": "Gale Petrov",
+        "number": 120,
+        "class": "+40A"
+      },
+      {
+        "seriesId": "s-jules",
+        "name": "Jules Marin",
+        "number": 64,
+        "class": "C"
+      },
+      {
+        "seriesId": "s-kira",
+        "name": "Kira Holt",
+        "number": 214,
+        "class": "Womens"
+      },
+      {
+        "seriesId": "s-nina",
+        "name": "Nina Cho",
+        "number": 18,
+        "class": "Womens Pro"
+      },
+      {
+        "seriesId": "s-omar",
+        "name": "Omar Shah",
+        "number": 500,
+        "class": "Electric Pro"
+      },
+      {
+        "seriesId": "s-liam",
+        "name": "Liam Ortega",
+        "number": 305,
+        "class": "65/85"
+      }
+    ],
+    "registrations": [
+      {
+        "riderNumber": 1,
+        "name": "Alex Hargrove",
+        "class": "Pro",
+        "seriesId": "s-alex"
+      },
+      {
+        "riderNumber": 7,
+        "name": "Blake Iverson",
+        "class": "Pro",
+        "seriesId": "s-blake"
+      },
+      {
+        "riderNumber": 42,
+        "name": "Casey Nguyen",
+        "class": "A",
+        "seriesId": "s-casey"
+      },
+      {
+        "riderNumber": 55,
+        "name": "Dana Brooks",
+        "class": "A",
+        "seriesId": "s-dana"
+      },
+      {
+        "riderNumber": 88,
+        "name": "Erin Vasquez",
+        "class": "B",
+        "seriesId": "s-erin"
+      },
+      {
+        "riderNumber": 90,
+        "name": "Fran Okonkwo",
+        "class": "B",
+        "seriesId": "s-fran"
+      },
+      {
+        "riderNumber": 120,
+        "name": "Gale Petrov",
+        "class": "+40A",
+        "seriesId": "s-gale"
+      },
+      {
+        "riderNumber": 64,
+        "name": "Jules Marin",
+        "class": "C",
+        "seriesId": "s-jules"
+      },
+      {
+        "riderNumber": 214,
+        "name": "Kira Holt",
+        "class": "Womens",
+        "seriesId": "s-kira"
+      }
+    ]
+  }
+}

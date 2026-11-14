@@ -18,16 +18,19 @@ It installs, builds the laptop and station Vite bundles, and attaches:
 
 ### Windows installer
 
-`apps/laptop/src-tauri` is a Tauri 2 scaffold (`Cargo.toml`, `tauri.conf.json`, a window, a default capability). CI does not install Rust and does not run `tauri build`.
+`apps/laptop/src-tauri` wires the window, `tauri-plugin-sql`, `tauri-plugin-http`, and credential commands backed by the `keyring` crate. CI does not install Rust and does not run `tauri build`.
+
+The SQL plugin and the HTTP plugin require Rust 1.90. `Cargo.toml` says so. A machine on an older toolchain cannot compile the shell.
 
 Still missing before an NSIS installer can be attached to a release:
 
-- a Windows runner with the Rust toolchain and the Tauri CLI
+- a Windows runner with Rust 1.90 and the Tauri CLI
 - icons at the paths in `apps/laptop/src-tauri/tauri.conf.json` (`icons/32x32.png`, `icons/128x128.png`, `icons/icon.ico`)
 - NSIS
 - a code-signing certificate
+- a compile check of the credential commands against the `keyring` crate on Windows
 
-`pnpm --filter @mwhe/laptop build` only typechecks and builds the web bundle. That is what CI runs.
+`pnpm --filter @mwhe/laptop build` only typechecks and builds the web bundle. That is what CI runs. Registration, number checks, roster versions, changelog writes, and the mock-site download are covered by Vitest without Rust.
 
 ### Android APK
 

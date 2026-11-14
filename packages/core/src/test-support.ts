@@ -1,6 +1,7 @@
 import { RIDER_CLASSES, type RiderClass } from "./classes.js";
 import type { Penalty } from "./schemas/penalty.js";
 import type { Punch } from "./schemas/punch.js";
+import { defaultRace } from "./schemas/race-package.js";
 import type { StartTime } from "./schemas/start-time.js";
 import type { ScoreRaceInput } from "./scoring/types.js";
 import { SCHEMA_VERSION } from "./version.js";
@@ -116,6 +117,14 @@ export function makeScoreInput(
     });
   }
 
+  const event = {
+    id: "test-event",
+    name: "Test Event",
+    date: "2026-06-14",
+    timeLimitMinutes: args.timeLimitMinutes ?? 180,
+    checks: args.checks ?? DEFAULT_CHECKS,
+  };
+
   return {
     schemaVersion: SCHEMA_VERSION,
     resultsVersion: 3,
@@ -124,13 +133,8 @@ export function makeScoreInput(
     race: {
       schemaVersion: SCHEMA_VERSION,
       classes: [...RIDER_CLASSES],
-      event: {
-        id: "test-event",
-        name: "Test Event",
-        date: "2026-06-14",
-        timeLimitMinutes: args.timeLimitMinutes ?? 180,
-        checks: args.checks ?? DEFAULT_CHECKS,
-      },
+      event,
+      races: [defaultRace(event)],
       riders: seriesRiders,
       registrations,
     },

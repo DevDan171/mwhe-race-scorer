@@ -51,6 +51,18 @@ describe("race package", () => {
     expect(() => racePackageSchema.parse(race)).toThrow(/official MWHE class list/i);
   });
 
+  it("rejects a package with no races", () => {
+    const race = clone(createDemoRace().race);
+    const broken = { ...race, races: [] };
+    expect(() => racePackageSchema.parse(broken)).toThrow();
+  });
+
+  it("rejects a primary race that disagrees with the event course", () => {
+    const race = clone(createDemoRace().race);
+    race.event.timeLimitMinutes = 90;
+    expect(() => racePackageSchema.parse(race)).toThrow(/primary race/i);
+  });
+
   it("rejects the wrong schema version", () => {
     const race = clone(createDemoRace().race);
     const broken = { ...race, schemaVersion: 2 };
