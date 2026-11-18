@@ -33,7 +33,8 @@ describe("race package", () => {
       name: "Day Of",
       class: "C",
       seriesId: null,
-      startRow: null,
+      registeredAt: null,
+      assignedRows: [],
     });
     expect(() => racePackageSchema.parse(race)).toThrow(/day-of/i);
   });
@@ -106,7 +107,8 @@ describe("race package", () => {
     expect(parsed.races[0]?.length).toEqual({ mode: "time", minutes: 180 });
     expect(parsed.event).not.toHaveProperty("timeLimitMinutes");
     expect(parsed.races[0]).not.toHaveProperty("laps");
-    expect(parsed.registrations[0]?.startRow).toBeNull();
+    expect(parsed.registrations[0]?.assignedRows).toEqual([]);
+    expect(parsed.registrations[0]?.registeredAt).toBeNull();
     expect(parsed.races[0]?.rowGapSeconds).toBe(0);
     expect(parsed.races[0]?.plannedStart).toBeNull();
   });

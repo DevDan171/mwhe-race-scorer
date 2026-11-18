@@ -18,7 +18,7 @@ Downloaded from the site before the race.
 - `startRows`: at least one row. `id`, `order`, `label`, and `classes`. `order` is the row number across the whole race, starting at 1. A class may be on more than one row (A on rows 2, 3, and 4). The same class is not listed twice on one row.
 - `classes`: the official class list, in canonical order. See `RIDER_CLASSES` in `packages/core/src/classes.ts`.
 - `riders`: series master list. `seriesId`, `name`, `number`, `class`. Rider numbers are unique across the series, not just inside a class. Series ids are unique.
-- `registrations`: who is in this event. `riderNumber`, `name`, `class`, `seriesId`, `startRow`. `startRow` is the race-wide row number, or null when the site did not assign one. Null riders are placed by number. See [scoring rules](scoring-rules.md).
+- `registrations`: who is in this event. `riderNumber`, `name`, `class`, `seriesId`, `registeredAt`, `assignedRows`. `registeredAt` is when they signed up, or null. `assignedRows` is `{ raceId, row }` for each race that assigned a start row. A start row is per race. An empty list means the laptop places them by registration time. See [scoring rules](scoring-rules.md).
 
 `seriesId` is null for a day-of entry. A day-of number cannot collide with a series rider. A non-null `seriesId` must be the series rider who owns that number.
 

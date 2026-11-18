@@ -93,7 +93,8 @@ describe("event registration", () => {
       name: "Nina Cho",
       class: "Womens Pro",
       seriesId: "s-nina",
-      startRow: null,
+      registeredAt: WHEN,
+      assignedRows: [],
     });
     expect(state.rosterVersion).toBe(2);
     expect(state.dayOfRegistrations).toEqual([]);

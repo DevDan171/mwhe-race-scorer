@@ -111,13 +111,16 @@ export function createSampleRacePackage(): RacePackage {
     ],
     classes: [...RIDER_CLASSES],
     riders,
-    registrations: entered.map((entry) => ({
+    registrations: entered.map((entry, index) => ({
       riderNumber: entry.number,
       name: entry.name,
       class: entry.class,
       seriesId: entry.seriesId,
-      // Dana is assigned to A's last row. The others are placed by number.
-      startRow: entry.number === 55 ? 4 : null,
+      // Signup order, not number order. Avery is before Casey.
+      registeredAt: `2026-07-${String(index + 1).padStart(2, "0")}T12:00:00.000Z`,
+      // Dana's class is only on the championship, so her row is that race.
+      assignedRows:
+        entry.number === 55 ? [{ raceId: "gnaw-bone-championship", row: 4 }] : [],
     })),
   });
 }

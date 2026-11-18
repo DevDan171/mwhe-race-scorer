@@ -30,8 +30,12 @@ export interface TestRider {
   class: RiderClass;
   /** Null is a day-of entry with no series record. */
   seriesId?: string | null;
-  /** Race-wide row number. Omit to leave the rider unassigned. */
+  /**
+   * Row on the single test race. Omit to leave the rider unassigned.
+   * The test race id is `test-event:race`.
+   */
   startRow?: number | null;
+  registeredAt?: string | null;
 }
 
 export function makePunch(args: {
@@ -120,7 +124,11 @@ export function makeScoreInput(
       name: rider.name,
       class: rider.class,
       seriesId,
-      startRow: rider.startRow ?? null,
+      registeredAt: rider.registeredAt ?? null,
+      assignedRows:
+        rider.startRow == null
+          ? []
+          : [{ raceId: "test-event:race", row: rider.startRow }],
     });
   }
 

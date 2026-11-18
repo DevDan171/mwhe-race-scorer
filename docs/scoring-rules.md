@@ -35,13 +35,18 @@ Row numbers run across the whole race. Pro can be row 1, class A rows 2 through 
 
 Row 1 leaves at the race's planned start. Row N leaves `(N - 1) * rowGapSeconds` later. The row number is used as written, so a missing number still leaves the gap. An empty row still holds its number. No planned start means the rows have no clock.
 
-A registration may name a `startRow`. That number is used when it is one of the rows for the rider's class. When it is missing, or it names a row that class is not on, the laptop places the rider by number:
+A start row is per race. `assignedRows` lists `{ raceId, row }` for the races that assigned one. An entry is used on a race when `raceId` matches and `row` is one of that class's rows on that race. A number stored for a different race is ignored here.
 
-1. Sort the unassigned riders in the class by rider number.
-2. Split them into contiguous blocks, one block per row of that class, as evenly as possible.
-3. Earlier rows get the extra rider when the count does not divide evenly. The lowest numbers go on the earliest row.
-4. Riders who were assigned a row stay there. They are not part of the split, so one assignment does not reshuffle everyone else.
-5. Inside a row, riders line up by number.
+When this race did not assign a row, or the number is not one of this class's rows, the laptop places the rider by registration time:
+
+1. Sort the unassigned riders in the class by `registeredAt`, earliest first. A missing time sorts after every known time.
+2. The same timestamp, or two missing times, breaks by the lower rider number.
+3. Split them into contiguous blocks, one block per row of that class, as evenly as possible.
+4. Earlier rows get the extra rider when the count does not divide evenly. The earliest registrations go on the earliest row.
+5. Riders who were assigned a row on this race stay there. They are not part of the split, so one assignment does not reshuffle everyone else.
+6. Inside a row, riders line up in that same registration order.
+
+`registeredAt` is the site's `created_date` on the row that was sent. When a roster rider also has a pre-entry, the earlier of the two `created_date` values is used. A rider added on the laptop uses the time of that change.
 
 A start time entered on the laptop replaces that rider's row clock, and the time limit is then counted from the entered start.
 
@@ -114,5 +119,5 @@ These are encoded so the tests have one answer. Change them in `packages/core` i
 11. Any voided copy of a uuid drops that punch.
 12. The series-points fallback when neither rider has a finish at the latest event is still open. The walk-back is a placeholder.
 13. A timed race counts its limit from each rider's own start, which is their row's clock unless a start was entered by hand.
-14. A lap race has no time limit. A blank lap count means the race runs until the finish. Scoring still counts distinct checks. It does not yet require a set number of laps.
-15. Riders with no assigned start row are split by number across that class's rows, lowest numbers on the earliest row.
+14. A lap race has no time limit. A blank lap count means the race runs until the finish. Scoring still counts distinct checks. A set lap count is stored and shown, and it is not enforced.
+15. Riders with no assigned start row on this race are split by registration time, earliest signup on the earliest row. A missing time sorts last. The same time breaks by the lower rider number.

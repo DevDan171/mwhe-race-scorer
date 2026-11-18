@@ -28,14 +28,17 @@ function race(overrides: Partial<Race> = {}): Race {
 function rider(
   riderNumber: number,
   riderClass: EventRegistration["class"],
-  startRow: number | null = null,
+  row: number | null = null,
+  registeredAt: string | null = null,
+  raceId = "race",
 ): EventRegistration {
   return {
     riderNumber,
     name: `Rider ${riderNumber}`,
     class: riderClass,
     seriesId: null,
-    startRow,
+    registeredAt,
+    assignedRows: row === null ? [] : [{ raceId, row }],
   };
 }
 
@@ -51,32 +54,44 @@ describe("planStartOrder", () => {
     ]);
   });
 
-  it("splits unassigned riders by number, earliest row first", () => {
+  it("splits unassigned riders by registration time, earliest row first", () => {
     const plan = planStartOrder(race(), [
-      rider(21, "A"),
-      rider(4, "A"),
-      rider(11, "A"),
-      rider(20, "A"),
-      rider(10, "A"),
+      rider(4, "A", null, "2026-07-05T00:00:00.000Z"),
+      rider(21, "A", null, "2026-07-01T00:00:00.000Z"),
+      rider(10, "A", null, "2026-07-03T00:00:00.000Z"),
+      rider(11, "A", null, "2026-07-02T00:00:00.000Z"),
+      rider(20, "A", null, "2026-07-04T00:00:00.000Z"),
     ]);
     const rows = plan.rows.filter((row) => row.classes.includes("A"));
     expect(rows.map((row) => row.riders.map((entry) => entry.riderNumber))).toEqual([
-      [4, 10],
-      [11, 20],
-      [21],
+      [21, 11],
+      [10, 20],
+      [4],
     ]);
     expect(
       rows.every((row) => row.riders.every((entry) => entry.placement === "split")),
     ).toBe(true);
   });
 
+  it("breaks a registration-time tie by the lower rider number", () => {
+    const plan = planStartOrder(race(), [
+      rider(40, "A", null, "2026-07-01T00:00:00.000Z"),
+      rider(8, "A", null, "2026-07-01T00:00:00.000Z"),
+      rider(12, "A", null, null),
+    ]);
+    const numbers = plan.rows
+      .filter((row) => row.classes.includes("A"))
+      .map((row) => row.riders.map((entry) => entry.riderNumber));
+    expect(numbers).toEqual([[8], [40], [12]]);
+  });
+
   it("keeps an assigned row and does not reshuffle the others around it", () => {
     const plan = planStartOrder(race(), [
-      rider(4, "A"),
-      rider(10, "A", 4),
-      rider(11, "A"),
-      rider(20, "A"),
-      rider(21, "A"),
+      rider(4, "A", null, "2026-07-01T00:00:00.000Z"),
+      rider(10, "A", 4, "2026-07-02T00:00:00.000Z"),
+      rider(11, "A", null, "2026-07-03T00:00:00.000Z"),
+      rider(20, "A", null, "2026-07-04T00:00:00.000Z"),
+      rider(21, "A", null, "2026-07-05T00:00:00.000Z"),
     ]);
     const rows = plan.rows.filter((row) => row.classes.includes("A"));
     expect(rows.map((row) => row.riders.map((entry) => entry.riderNumber))).toEqual([
@@ -93,8 +108,23 @@ describe("planStartOrder", () => {
     expect(plan.warnings).toEqual([]);
   });
 
-  it("places a rider by number when the assigned row is not their class", () => {
-    const plan = planStartOrder(race(), [rider(8, "A", 5), rider(9, "A")]);
+  it("ignores a start row that belongs to a different race", () => {
+    const plan = planStartOrder(race(), [
+      rider(8, "A", 4, "2026-07-01T00:00:00.000Z", "other-race"),
+      rider(9, "A", null, "2026-07-02T00:00:00.000Z"),
+    ]);
+    expect(plan.warnings).toEqual([]);
+    const numbers = plan.rows
+      .filter((row) => row.classes.includes("A"))
+      .map((row) => row.riders.map((entry) => entry.riderNumber));
+    expect(numbers).toEqual([[8], [9], []]);
+  });
+
+  it("places a rider by registration time when the assigned row is not their class", () => {
+    const plan = planStartOrder(race(), [
+      rider(8, "A", 5, "2026-07-02T00:00:00.000Z"),
+      rider(9, "A", null, "2026-07-01T00:00:00.000Z"),
+    ]);
     expect(plan.warnings).toEqual([
       {
         code: "start_row_out_of_range",
@@ -106,7 +136,8 @@ describe("planStartOrder", () => {
     const numbers = plan.rows
       .filter((row) => row.classes.includes("A"))
       .map((row) => row.riders.map((entry) => entry.riderNumber));
-    expect(numbers).toEqual([[8], [9], []]);
-    expect(plan.rows[1]?.riders[0]?.ignoredStartRow).toBe(5);
+    expect(numbers).toEqual([[9], [8], []]);
+    expect(plan.rows[1]?.riders[0]?.ignoredStartRow).toBeNull();
+    expect(plan.rows[2]?.riders[0]?.ignoredStartRow).toBe(5);
   });
 });

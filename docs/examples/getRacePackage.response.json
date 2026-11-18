@@ -232,70 +232,85 @@
         "name": "Alex Hargrove",
         "class": "Pro",
         "seriesId": "s-alex",
-        "startRow": null
+        "registeredAt": "2026-07-01T12:00:00.000Z",
+        "assignedRows": []
       },
       {
         "riderNumber": 7,
         "name": "Blake Iverson",
         "class": "Pro",
         "seriesId": "s-blake",
-        "startRow": null
+        "registeredAt": "2026-07-02T12:00:00.000Z",
+        "assignedRows": []
       },
       {
         "riderNumber": 33,
         "name": "Avery Quinn",
         "class": "A",
         "seriesId": "s-avery",
-        "startRow": null
+        "registeredAt": "2026-07-03T12:00:00.000Z",
+        "assignedRows": []
       },
       {
         "riderNumber": 42,
         "name": "Casey Nguyen",
         "class": "A",
         "seriesId": "s-casey",
-        "startRow": null
+        "registeredAt": "2026-07-04T12:00:00.000Z",
+        "assignedRows": []
       },
       {
         "riderNumber": 55,
         "name": "Dana Brooks",
         "class": "A",
         "seriesId": "s-dana",
-        "startRow": 4
+        "registeredAt": "2026-07-05T12:00:00.000Z",
+        "assignedRows": [
+          {
+            "raceId": "gnaw-bone-championship",
+            "row": 4
+          }
+        ]
       },
       {
         "riderNumber": 88,
         "name": "Erin Vasquez",
         "class": "B",
         "seriesId": "s-erin",
-        "startRow": null
+        "registeredAt": "2026-07-06T12:00:00.000Z",
+        "assignedRows": []
       },
       {
         "riderNumber": 90,
         "name": "Fran Okonkwo",
         "class": "B",
         "seriesId": "s-fran",
-        "startRow": null
+        "registeredAt": "2026-07-07T12:00:00.000Z",
+        "assignedRows": []
       },
       {
         "riderNumber": 120,
         "name": "Gale Petrov",
         "class": "+40A",
         "seriesId": "s-gale",
-        "startRow": null
+        "registeredAt": "2026-07-08T12:00:00.000Z",
+        "assignedRows": []
       },
       {
         "riderNumber": 64,
         "name": "Jules Marin",
         "class": "C",
         "seriesId": "s-jules",
-        "startRow": null
+        "registeredAt": "2026-07-09T12:00:00.000Z",
+        "assignedRows": []
       },
       {
         "riderNumber": 214,
         "name": "Kira Holt",
         "class": "Womens",
         "seriesId": "s-kira",
-        "startRow": null
+        "registeredAt": "2026-07-10T12:00:00.000Z",
+        "assignedRows": []
       }
     ]
   }

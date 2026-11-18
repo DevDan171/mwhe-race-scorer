@@ -8,14 +8,16 @@ import type { EventRegistration, Race } from "../schemas/race-package.js";
  * Row N leaves `(N - 1) * rowGapSeconds` later, even when a number is
  * missing in between. A class can occupy several of those rows.
  *
- * A registration `startRow` is that race-wide number. It is used when that
- * row includes the rider's class. Otherwise the rider is placed by number:
- * unassigned riders in the class are sorted by rider number and split into
- * contiguous blocks, one block per row of that class, as evenly as possible.
- * Earlier rows get the extra rider. The lowest numbers go on the earliest
- * row. Assigned riders are not part of that split, so giving one person a
- * row does not reshuffle everyone else. Inside a row, riders line up by
- * number.
+ * `assignedRows` is per race. An entry is used on this race when its
+ * `raceId` matches and its `row` is one of this class's rows. Otherwise
+ * the rider is placed by registration time: unassigned riders in the class
+ * are sorted by `registeredAt` (earliest first) and split into contiguous
+ * blocks, one block per row of that class, as evenly as possible. Earlier
+ * rows get the extra rider. The earliest registrations go on the earliest
+ * row. A missing `registeredAt` sorts after every known time. The same
+ * timestamp, or two missing times, breaks by the lower rider number.
+ * Assigned riders are not part of that split. Inside a row, riders line up
+ * in that same registration order.
  */
 export interface PlannedRider {
   riderNumber: number;
@@ -26,8 +28,9 @@ export interface PlannedRider {
   /** 1-based index among this class's rows, in start order. */
   classRow: number;
   placement: "assigned" | "split";
-  /** Set when the site named a row that is not one of this class's rows. */
+  /** Set when this race named a row that is not one of this class's rows. */
   ignoredStartRow: number | null;
+  registeredAt: string | null;
 }
 
 export interface PlannedRow {
@@ -71,12 +74,12 @@ export function planStartOrder(
     const classRowNumbers = classRows.map((row) => row.order);
     const riders = registrations
       .filter((registration) => registration.class === riderClass)
-      .sort((a, b) => a.riderNumber - b.riderNumber);
+      .sort(compareRegistrationOrder);
     const assigned = new Map<number, EventRegistration[]>();
     const unassigned: EventRegistration[] = [];
 
     for (const registration of riders) {
-      const startRow = registration.startRow;
+      const startRow = assignedRowForRace(registration, race.id);
       if (startRow !== null && classRowNumbers.includes(startRow)) {
         const group = assigned.get(startRow) ?? [];
         group.push(registration);
@@ -103,7 +106,13 @@ export function planStartOrder(
       const classRow = index + 1;
       const placed = [
         ...block.map((registration) =>
-          plannedRider(registration, row.order, classRow, "split", registration.startRow),
+          plannedRider(
+            registration,
+            row.order,
+            classRow,
+            "split",
+            assignedRowForRace(registration, race.id),
+          ),
         ),
         ...(assigned.get(row.order) ?? []).map((registration) =>
           plannedRider(registration, row.order, classRow, "assigned", null),
@@ -122,11 +131,23 @@ export function planStartOrder(
       label: row.label,
       classes: [...row.classes],
       startedAt: rowStartedAt(race.plannedStart, row.order, race.rowGapSeconds),
-      riders: (ridersByRow.get(row.id) ?? []).sort(
-        (a, b) => a.riderNumber - b.riderNumber,
-      ),
+      riders: (ridersByRow.get(row.id) ?? []).sort(comparePlanned),
     })),
   };
+}
+
+/**
+ * Earliest registration first. A missing time sorts after every known time.
+ * The same time, or two missing times, breaks by the lower rider number.
+ */
+export function compareRegistrationOrder(
+  a: Pick<EventRegistration, "registeredAt" | "riderNumber">,
+  b: Pick<EventRegistration, "registeredAt" | "riderNumber">,
+): number {
+  const at = registrationMs(a.registeredAt);
+  const bt = registrationMs(b.registeredAt);
+  if (at !== bt) return at - bt;
+  return a.riderNumber - b.riderNumber;
 }
 
 /** Row N leaves at the planned start plus the gap times (N - 1). */
@@ -138,6 +159,27 @@ export function rowStartedAt(
   if (plannedStart === null) return null;
   const ms = Date.parse(plannedStart) + (rowNumber - 1) * rowGapSeconds * 1000;
   return new Date(ms).toISOString();
+}
+
+function assignedRowForRace(
+  registration: EventRegistration,
+  raceId: string,
+): number | null {
+  const match = registration.assignedRows.find((entry) => entry.raceId === raceId);
+  return match?.row ?? null;
+}
+
+function registrationMs(registeredAt: string | null): number {
+  if (registeredAt === null) return Number.POSITIVE_INFINITY;
+  const ms = Date.parse(registeredAt);
+  return Number.isNaN(ms) ? Number.POSITIVE_INFINITY : ms;
+}
+
+function comparePlanned(a: PlannedRider, b: PlannedRider): number {
+  return compareRegistrationOrder(
+    { registeredAt: a.registeredAt, riderNumber: a.riderNumber },
+    { registeredAt: b.registeredAt, riderNumber: b.riderNumber },
+  );
 }
 
 function splitCounts(riderCount: number, rowCount: number): number[] {
@@ -162,5 +204,6 @@ function plannedRider(
     classRow,
     placement,
     ignoredStartRow: placement === "split" ? ignoredStartRow : null,
+    registeredAt: registration.registeredAt,
   };
 }

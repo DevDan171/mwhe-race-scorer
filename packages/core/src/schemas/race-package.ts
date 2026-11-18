@@ -158,26 +158,36 @@ export const seriesRiderSchema = z.strictObject({
   class: riderClassSchema,
 });
 
+/** A start row on one race. Row numbers are not shared across races. */
+export const assignedRowSchema = z.strictObject({
+  raceId: z.string().min(1),
+  row: z.number().int().positive(),
+});
+
 /**
  * Someone entered in this event. `seriesId` is null for a day-of entry that
- * is not on the series list. `startRow` is the race-wide row number from the
- * site, when one was assigned. Null means the laptop places them by number.
+ * is not on the series list. `registeredAt` is when they signed up, used to
+ * line up riders who were not given a start row. `assignedRows` is the
+ * start row on each race. A row is per race, so an empty list means none
+ * of the races assigned one.
  */
 export const eventRegistrationSchema = z.strictObject({
   riderNumber: riderNumberSchema,
   name: z.string().min(1),
   class: riderClassSchema,
   seriesId: z.string().min(1).nullable(),
-  startRow: z.number().int().positive().nullable().default(null),
+  registeredAt: isoTimestampSchema.nullable().default(null),
+  assignedRows: z.array(assignedRowSchema).default([]),
 });
 
 /**
  * Downloaded from MidwestHardEnduro.com before the race. The laptop treats
  * this as the starting roster and course.
  *
- * schemaVersion stays 1. `length`, `rowGapSeconds`, `plannedStart`, and
- * `startRow` are new, and a class may now be on more than one row. Packages
- * that still have `timeLimitMinutes` parse as a timed race.
+ * schemaVersion stays 1. `length`, `rowGapSeconds`, `plannedStart`,
+ * `registeredAt`, and `assignedRows` can be omitted. A class may be on more
+ * than one row. Packages that still have `timeLimitMinutes` parse as a timed
+ * race.
  */
 export const racePackageSchema = z
   .strictObject({
@@ -263,8 +273,29 @@ export const racePackageSchema = z
       "Duplicate event registration number",
     );
 
+    const raceIds = new Set(race.races.map((entry) => entry.id));
     const seriesByNumber = new Map(race.riders.map((rider) => [rider.number, rider]));
     race.registrations.forEach((registration, index) => {
+      const seenRaceIds = new Set<string>();
+      registration.assignedRows.forEach((assignment, assignmentIndex) => {
+        if (seenRaceIds.has(assignment.raceId)) {
+          ctx.addIssue({
+            code: "custom",
+            message: "A rider can have only one start row on a race",
+            path: ["registrations", index, "assignedRows", assignmentIndex],
+            input: registration,
+          });
+        }
+        seenRaceIds.add(assignment.raceId);
+        if (!raceIds.has(assignment.raceId)) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Assigned start row names a race that is not in this package",
+            path: ["registrations", index, "assignedRows", assignmentIndex, "raceId"],
+            input: registration,
+          });
+        }
+      });
       const seriesRider = seriesByNumber.get(registration.riderNumber);
       if (registration.seriesId === null) {
         if (seriesRider) {
@@ -295,6 +326,7 @@ export type StartRow = z.infer<typeof startRowSchema>;
 export type Race = z.infer<typeof raceSchema>;
 export type Event = z.infer<typeof eventSchema>;
 export type SeriesRider = z.infer<typeof seriesRiderSchema>;
+export type AssignedRow = z.infer<typeof assignedRowSchema>;
 export type EventRegistration = z.infer<typeof eventRegistrationSchema>;
 export type RacePackage = z.infer<typeof racePackageSchema>;
 

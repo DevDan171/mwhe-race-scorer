@@ -226,8 +226,8 @@ export function RaceSetup() {
         <p className="hint">
           Row numbers run across the whole race. Row 1 leaves at the planned start. Row N
           leaves (N - 1) times the gap later. A class can use more than one row. Riders
-          with no assigned row are lined up by number, lowest numbers on the earliest row
-          of their class, split as evenly as the count allows.
+          with no assigned row are lined up by registration time, earliest signup on the
+          earliest row of their class, split as evenly as the count allows.
         </p>
         <div className="inline">
           <Field label="Row gap (seconds)">
@@ -350,7 +350,7 @@ export function RaceSetup() {
                           {rider.class}
                           {rider.placement === "assigned"
                             ? " · assigned to this row"
-                            : " · placed by number"}
+                            : " · placed by registration order"}
                           {rider.ignoredStartRow !== null
                             ? ` · site row ${rider.ignoredStartRow} is not a ${rider.class} row`
                             : ""}

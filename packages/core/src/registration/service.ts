@@ -240,7 +240,8 @@ export function addSeriesRiderToEvent(
     name: rider.name,
     class: rider.class,
     seriesId: rider.seriesId,
-    startRow: null,
+    registeredAt: input.audit.when,
+    assignedRows: [],
   };
   return commitRoster(state, input.audit, {
     race: {
@@ -307,7 +308,8 @@ export function registerNewRider(
     name,
     class: input.class,
     seriesId,
-    startRow: null,
+    registeredAt: input.audit.when,
+    assignedRows: [],
   };
   const dayOf = dayOfRegistrationSchema.parse({
     seriesId,

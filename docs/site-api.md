@@ -200,22 +200,23 @@ Check the role **before** `base44.asServiceRole`. Service role skips entity rule
 
 ### `racePackage` fields
 
-| Field                      | Meaning                                                                                                                                                                |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schemaVersion`            | Always `1`. Older packages that still have `timeLimitMinutes` are read as a timed race.                                                                                |
-| `event`                    | `id`, `name`, `date` (`YYYY-MM-DD`), `length`, `checks`.                                                                                                               |
-| `event.length`             | Same length as the primary race. `{ "mode": "time", "minutes": 120 }` or `{ "mode": "laps", "laps": 2 }`. `laps: null` runs until the finish and has no time limit.    |
-| `event.checks`             | The course of the **primary race** (lowest `order`). Each check has `id`, `order` (unique, starting at 1), and `name`.                                                 |
-| `races`                    | One or more races. Unique `id` and unique `order`.                                                                                                                     |
-| `races[].length`           | One choice, time or laps. The primary race's length **must equal** `event.length`. A time limit is counted from each row's own start.                                  |
-| `races[].rowGapSeconds`    | Whole seconds, 0 or more, between row numbers. Defaults to 0 when omitted.                                                                                             |
-| `races[].plannedStart`     | When row 1 leaves, ISO-8601 with an offset, or null. Row N leaves at this time plus the gap times (N - 1).                                                             |
-| `races[].checks`           | Lap order for that race. The primary race's list **must equal** `event.checks`, same ids, order numbers, names, and array order. Other races may use a shorter course. |
-| `races[].startRows`        | At least one row. `id`, `order`, `label`, and `classes`. `order` is the row number across the whole race. A class may be on several rows.                              |
-| `classes`                  | The official list, in this order: Pro, A, B, C, +40A, +40B, +40C, Womens, Womens Pro, Electric Sportsman, Electric Pro, 65/85, 50cc.                                   |
-| `riders`                   | Series master list. `seriesId`, `name`, `number`, `class`. Numbers are unique across the series, not per class. Series ids are unique.                                 |
-| `registrations`            | Who is already in this event. `riderNumber`, `name`, `class`, `seriesId`, `startRow`. Numbers are unique inside the event.                                             |
-| `registrations[].startRow` | Race-wide row number from `ScoringRoster.start_row`, or null. Null riders are placed by number. See [scoring rules](scoring-rules.md).                                 |
+| Field                          | Meaning                                                                                                                                                                |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion`                | Always `1`. Older packages that still have `timeLimitMinutes` are read as a timed race.                                                                                |
+| `event`                        | `id`, `name`, `date` (`YYYY-MM-DD`), `length`, `checks`.                                                                                                               |
+| `event.length`                 | Same length as the primary race. `{ "mode": "time", "minutes": 120 }` or `{ "mode": "laps", "laps": 2 }`. `laps: null` runs until the finish and has no time limit.    |
+| `event.checks`                 | The course of the **primary race** (lowest `order`). Each check has `id`, `order` (unique, starting at 1), and `name`.                                                 |
+| `races`                        | One or more races. Unique `id` and unique `order`.                                                                                                                     |
+| `races[].length`               | One choice, time or laps. The primary race's length **must equal** `event.length`. A time limit is counted from each row's own start.                                  |
+| `races[].rowGapSeconds`        | Whole seconds, 0 or more, between row numbers. Defaults to 0 when omitted.                                                                                             |
+| `races[].plannedStart`         | When row 1 leaves, ISO-8601 with an offset, or null. Row N leaves at this time plus the gap times (N - 1).                                                             |
+| `races[].checks`               | Lap order for that race. The primary race's list **must equal** `event.checks`, same ids, order numbers, names, and array order. Other races may use a shorter course. |
+| `races[].startRows`            | At least one row. `id`, `order`, `label`, and `classes`. `order` is the row number across the whole race. A class may be on several rows.                              |
+| `classes`                      | The official list, in this order: Pro, A, B, C, +40A, +40B, +40C, Womens, Womens Pro, Electric Sportsman, Electric Pro, 65/85, 50cc.                                   |
+| `riders`                       | Series master list. `seriesId`, `name`, `number`, `class`. Numbers are unique across the series, not per class. Series ids are unique.                                 |
+| `registrations`                | Who is already in this event. `riderNumber`, `name`, `class`, `seriesId`, `registeredAt`, `assignedRows`. Numbers are unique inside the event.                         |
+| `registrations[].registeredAt` | When they signed up, ISO-8601 with an offset, or null. The laptop lines up riders with no start row by this time. See [scoring rules](scoring-rules.md).               |
+| `registrations[].assignedRows` | `{ raceId, row }` for each race that assigned a start row. A start row is per race. Empty when none was assigned.                                                      |
 
 Leave out contact fields (email, phone, address, emergency contact). The laptop does not need them, and they must not be copied onto checkpoint phones later.
 
@@ -259,7 +260,11 @@ Race length is read only in `readRaceLength`, from the Edit Race fields:
 | `length_laps`    | Lap count. `0` or blank means laps are not set. On a lap race, that runs until the finish and does not create a time limit.                          |
 | `length_minutes` | Time limit in minutes, counted from each row's own start. Example: Test Race 1 is `length_type` `"time"`, `length_laps` `0`, `length_minutes` `120`. |
 
-`classes[].rows` is how many race-wide rows that class uses (Pro row 1, A rows 2-4). `row_gap_seconds` is the gap. `start_at` is when row 1 leaves. Row N leaves at that time plus the gap times (N - 1). `ScoringRoster.start_row` is that race-wide row number.
+`classes[].rows` is how many race-wide rows that class uses (Pro row 1, A rows 2-4). `row_gap_seconds` is the gap. `start_at` is when row 1 leaves. Row N leaves at that time plus the gap times (N - 1).
+
+A start row is per race. The shape to add on `ScoringRoster` (and on `EventRegistration` when a pre-entry has one) is `start_rows: [{ "race_id": "<Race id>", "row": 4 }]`. `race_id` is that Race record's id. `row` is the race-wide row number on that race. Today's `ScoringRoster.start_row` is one number for the whole event. The function uses it only when that rider's class is on exactly one race. Otherwise it is left off and the laptop lines them up by registration time.
+
+`registeredAt` is `created_date` on the ScoringRoster or EventRegistration row that was sent. When both exist for the same rider, the earlier one is sent. Riders with no assigned row line up by that time, earliest first. The same time, or a missing time, breaks by the lower rider number. A missing time sorts after every known time.
 
 If `length_type` is empty, a positive `length_minutes` is sent as a time race and a positive `length_laps` is sent as a lap race. A race with neither is sent as laps until the finish, with a warning, and is not given a 180 minute limit. Both values with no type stops the download until `length_type` is set.
 
@@ -274,7 +279,9 @@ import { createClientFromRequest } from "npm:@base44/sdk";
 // Race length comes from length_type, length_laps, and length_minutes.
 // A class may start on several rows (Race.classes[].rows). Row numbers
 // run across the race. Row N leaves at start_at plus row_gap_seconds
-// times (N - 1). ScoringRoster.start_row is that row number.
+// times (N - 1). A start row is per race. start_rows is
+// [{ race_id, row }]. The single start_row number is used only when
+// the rider's class is on exactly one race.
 // ---------------------------------------------------------------------------
 
 const HUB_ROLES = new Set(["race_director", "admin"]);
@@ -553,7 +560,8 @@ function buildRacePackage({ event, races, roster, registrations, riders }) {
     riderId,
     source,
     unpaid,
-    startRow,
+    registeredAt,
+    assignedRows,
   }) {
     if (!number) {
       warn(
@@ -606,7 +614,8 @@ function buildRacePackage({ event, races, roster, registrations, riders }) {
       name,
       class: riderClass,
       seriesId,
-      startRow: assignedStartRow(startRow, source, number, warn),
+      registeredAt,
+      assignedRows,
     });
   }
 
@@ -618,7 +627,21 @@ function buildRacePackage({ event, races, roster, registrations, riders }) {
       riderId: null,
       source: "Roster",
       unpaid: row.paid === false || /^unpaid$/i.test(String(row.payment || "")),
-      startRow: row.start_row,
+      registeredAt: earlierCreated(
+        row,
+        findPreEntry(registrations, riderNumber(row.number)),
+        "Roster",
+        riderNumber(row.number),
+        warn,
+      ),
+      assignedRows: readAssignedRows(
+        row,
+        canonicalClass(row.rider_class),
+        packageRaces,
+        "Roster",
+        riderNumber(row.number),
+        warn,
+      ),
     });
   }
   const rosterCount = out.length;
@@ -637,25 +660,38 @@ function buildRacePackage({ event, races, roster, registrations, riders }) {
       riderId: reg.rider_id ? String(reg.rider_id) : null,
       source: "Pre-entry",
       unpaid: !/^paid$/i.test(String(reg.payment_status || "")),
-      startRow: null,
+      registeredAt: readCreated(reg.created_date, "Pre-entry", number, warn),
+      assignedRows: readAssignedRows(
+        reg,
+        canonicalClass(reg.rider_class),
+        packageRaces,
+        "Pre-entry",
+        number,
+        warn,
+      ),
     });
   }
 
   for (const reg of out) {
-    if (reg.startRow == null) continue;
-    const row = primary.startRows.find((item) => item.order === reg.startRow);
-    if (!row || row.classes.indexOf(reg.class) === -1) {
-      warn(
-        "#" +
-          reg.riderNumber +
-          " is assigned to row " +
-          reg.startRow +
-          ", which is not a " +
-          reg.class +
-          " row on " +
-          primary.name +
-          ". The laptop will place them by number on that race.",
+    for (const assignment of reg.assignedRows) {
+      const race = packageRaces.find((item) => item.id === assignment.raceId);
+      if (!race) continue;
+      const classRows = race.startRows.filter(
+        (item) => item.classes.indexOf(reg.class) !== -1,
       );
+      if (!classRows.some((item) => item.order === assignment.row)) {
+        warn(
+          "#" +
+            reg.riderNumber +
+            " is assigned to row " +
+            assignment.row +
+            " on " +
+            race.name +
+            ", which is not a " +
+            reg.class +
+            " row. The laptop will place them by registration time on that race.",
+        );
+      }
     }
   }
 
@@ -825,19 +861,159 @@ function readPlannedStart(race, label, warn) {
   return new Date(ms).toISOString();
 }
 
-function assignedStartRow(value, source, number, warn) {
-  if (value === null || value === undefined || clean(value) === "") return null;
-  const n = positiveInt(value);
-  if (!n) {
+// ---------------------------------------------------------------------------
+// Start row is per race. Add this on ScoringRoster, and on
+// EventRegistration when a pre-entry has one:
+//   start_rows: [{ race_id: "<Race id>", row: 4 }]
+// race_id is the Race record id. row is the race-wide row number on that
+// race. Today's start_row is one number for the whole event. It is used
+// only when this class is on exactly one race.
+// ---------------------------------------------------------------------------
+function readAssignedRows(record, riderClass, packageRaces, source, number, warn) {
+  const fromList = readStartRowsList(
+    record && record.start_rows,
+    packageRaces,
+    source,
+    number,
+    warn,
+  );
+  if (fromList !== null) return fromList;
+  if (!riderClass) return [];
+
+  const raw = record && record.start_row;
+  if (raw === null || raw === undefined || clean(raw) === "") return [];
+  const single = positiveInt(raw);
+  if (!single) {
     warn(
       source +
         " #" +
         number +
-        " has a start row the laptop cannot use. They will be placed by number.",
+        " has a start row the laptop cannot use. They will be placed by registration time.",
+    );
+    return [];
+  }
+
+  const races = packageRaces.filter((race) =>
+    race.startRows.some((row) => row.classes.indexOf(riderClass) !== -1),
+  );
+  if (races.length === 1) return [{ raceId: races[0].id, row: single }];
+  if (races.length === 0) {
+    warn(
+      source +
+        " #" +
+        number +
+        " has start row " +
+        single +
+        ", but " +
+        riderClass +
+        " is not on a race. It was not applied.",
+    );
+    return [];
+  }
+  warn(
+    source +
+      " #" +
+      number +
+      " has one start row (" +
+      single +
+      ") but " +
+      riderClass +
+      " is in more than one race (" +
+      races.map((race) => race.name).join(", ") +
+      "). A start row is per race, so it was not applied. Add start_rows as [{ race_id, row }].",
+  );
+  return [];
+}
+
+function readStartRowsList(value, packageRaces, source, number, warn) {
+  if (value === null || value === undefined || value === "") return null;
+  if (!Array.isArray(value)) {
+    warn(
+      source + " #" + number + " has start_rows that are not a list. They were not used.",
+    );
+    return [];
+  }
+  const known = new Set(packageRaces.map((race) => String(race.id)));
+  const out = [];
+  const seen = new Set();
+  for (const entry of value) {
+    const raceId = clean(entry && (entry.race_id || entry.raceId));
+    const row = positiveInt(
+      entry && (entry.row !== undefined ? entry.row : entry.start_row),
+    );
+    if (!raceId || !row) {
+      warn(
+        source +
+          " #" +
+          number +
+          " has a start_rows entry the laptop cannot use. It was skipped.",
+      );
+      continue;
+    }
+    if (!known.has(raceId)) {
+      warn(
+        source +
+          " #" +
+          number +
+          " names race " +
+          raceId +
+          ", which is not in this download. That start row was skipped.",
+      );
+      continue;
+    }
+    if (seen.has(raceId)) {
+      warn(
+        source +
+          " #" +
+          number +
+          " has two start rows for race " +
+          raceId +
+          ". The first was kept.",
+      );
+      continue;
+    }
+    seen.add(raceId);
+    out.push({ raceId: raceId, row: row });
+  }
+  return out;
+}
+
+function findPreEntry(registrations, number) {
+  if (!number) return null;
+  for (const reg of registrations) {
+    if (/cancel|refund/i.test(String(reg.payment_status || ""))) continue;
+    if (riderNumber(reg.bike_number) === number) return reg;
+  }
+  return null;
+}
+
+function earlierCreated(rosterRow, preEntry, source, number, warn) {
+  const rosterAt = readCreated(rosterRow && rosterRow.created_date, source, number, warn);
+  const preAt = preEntry
+    ? readCreated(preEntry.created_date, "Pre-entry", number, warn)
+    : null;
+  if (!rosterAt) return preAt;
+  if (!preAt) return rosterAt;
+  return Date.parse(rosterAt) <= Date.parse(preAt) ? rosterAt : preAt;
+}
+
+function readCreated(value, source, number, warn) {
+  let text = clean(value);
+  if (!text) return null;
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(text)) {
+    text = text.replace(" ", "T") + "Z";
+  }
+  const ms = Date.parse(text);
+  if (!Number.isFinite(ms)) {
+    warn(
+      source +
+        " #" +
+        number +
+        " has a registration time the laptop cannot read. They sort after riders with a time.",
     );
     return null;
   }
-  return n;
+  return new Date(ms).toISOString();
 }
 
 function clean(value) {
