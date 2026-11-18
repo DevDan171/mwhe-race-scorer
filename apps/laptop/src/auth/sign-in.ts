@@ -1,11 +1,13 @@
 import {
   assertHubAccess,
+  exchangeSignInCode,
   getRacePackage,
   getSignedInUser,
   isHubRole,
   signInWithPassword,
   SiteApiError,
   type RacePackage,
+  type SignedInSession,
   type SiteAccount,
 } from "@mwhe/core";
 
@@ -41,7 +43,31 @@ export async function completeSignIn(
   credentials: CredentialStore,
   input: PasswordSignIn,
 ): Promise<SiteAccount> {
-  const session = await signInWithPassword(input);
+  return keepHubSession(credentials, await signInWithPassword(input));
+}
+
+export interface GoogleSignIn {
+  baseUrl: string;
+  code: string;
+  state: string;
+  fetch?: typeof globalThis.fetch;
+}
+
+/**
+ * Trade the one-time code from the website for this person's token. The role
+ * check matches email sign-in. The code is not stored.
+ */
+export async function completeGoogleSignIn(
+  credentials: CredentialStore,
+  input: GoogleSignIn,
+): Promise<SiteAccount> {
+  return keepHubSession(credentials, await exchangeSignInCode(input));
+}
+
+async function keepHubSession(
+  credentials: CredentialStore,
+  session: SignedInSession,
+): Promise<SiteAccount> {
   try {
     assertHubAccess(session.account);
   } catch (error) {

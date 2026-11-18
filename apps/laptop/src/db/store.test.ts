@@ -2,8 +2,10 @@ import {
   createSampleRacePackage,
   getRacePackage,
   importRacePackage,
+  createSignInState,
   MOCK_APP_ID,
   MOCK_DIRECTOR,
+  MOCK_GOOGLE_DIRECTOR,
   MOCK_RIDER,
   registerNewRider,
   SAMPLE_EVENT_ID,
@@ -14,6 +16,7 @@ import { describe, expect, it } from "vitest";
 
 import { createMemoryCredentialStore } from "../auth/credentials";
 import {
+  completeGoogleSignIn,
   completeSignIn,
   confirmSession,
   downloadRacePackage,
@@ -169,6 +172,55 @@ describe("package download", () => {
 
       await credentials.clearToken();
       expect(await credentials.readToken()).toBeNull();
+    } finally {
+      await site.close();
+    }
+  });
+
+  it("signs a Google account in with a one-time code", async () => {
+    const site = await startMockSite();
+    const credentials = createMemoryCredentialStore();
+    try {
+      await expect(
+        completeSignIn(credentials, {
+          baseUrl: site.url,
+          appId: MOCK_APP_ID,
+          email: MOCK_GOOGLE_DIRECTOR.email,
+          password: "attempted-password",
+        }),
+      ).rejects.toMatchObject({ status: 400, code: "no_password" });
+      expect(await credentials.readToken()).toBeNull();
+
+      const state = createSignInState();
+      const chosen = await fetch(`${site.url}/laptop-signin/choose`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: MOCK_GOOGLE_DIRECTOR.email,
+          state,
+          callback: "https://evil.test/callback",
+        }),
+      });
+      const html = await chosen.text();
+      const code = /id="code">([^<]+)</.exec(html)?.[1] ?? "";
+      expect(html).not.toContain("evil.test");
+      const account = await completeGoogleSignIn(credentials, {
+        baseUrl: site.url,
+        code,
+        state,
+      });
+      expect(account).toMatchObject({
+        email: MOCK_GOOGLE_DIRECTOR.email,
+        role: "race_director",
+      });
+      const token = await credentials.readToken();
+      expect(token).toBeTruthy();
+      expect(html).not.toContain(token ?? "missing-token");
+      const racePackage = await downloadRacePackage(credentials, {
+        baseUrl: site.url,
+        eventId: SAMPLE_EVENT_ID,
+      });
+      expect(racePackage.event.id).toBe(SAMPLE_EVENT_ID);
     } finally {
       await site.close();
     }

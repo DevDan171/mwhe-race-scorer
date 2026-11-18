@@ -104,6 +104,7 @@ export { RegistrationError, type RegistrationErrorCode } from "./registration/er
 
 export {
   assertHubAccess,
+  exchangeSignInCode,
   getRacePackage,
   getRacePackageResponseSchema,
   getSignedInUser,
@@ -113,6 +114,7 @@ export {
   siteAccountSchema,
   siteErrorSchema,
   SiteApiError,
+  type ExchangeSignInCodeOptions,
   type GetRacePackageOptions,
   type GetRacePackageResponse,
   type GetSignedInUserOptions,
@@ -123,12 +125,25 @@ export {
   type SiteErrorBody,
 } from "./site/client.js";
 export {
+  buildLaptopSignInPageUrl,
+  createSignInState,
+  formatSignInCode,
+  isAllowedSignInCallback,
+  isSignInState,
+  LAPTOP_SIGN_IN_PATH,
+  loopbackCallbackUrl,
+  normalizeSignInCode,
+  readSignInCallback,
+  SIGN_IN_CODE_TTL_SECONDS,
+} from "./site/google-sign-in.js";
+export {
   authOriginFor,
   BASE44_AUTH_ORIGIN,
   MOCK_ACCOUNTS,
   MOCK_ADMIN,
   MOCK_APP_ID,
   MOCK_DIRECTOR,
+  MOCK_GOOGLE_DIRECTOR,
   MOCK_RIDER,
   MOCK_SITE_ORIGIN,
   type MockAccount,

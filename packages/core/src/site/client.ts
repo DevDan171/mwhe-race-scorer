@@ -1,6 +1,7 @@
 import { racePackageSchema, type RacePackage } from "../schemas/race-package.js";
 import { z } from "zod";
 
+import { isSignInState, normalizeSignInCode } from "./google-sign-in.js";
 import { authOriginFor } from "./mock-accounts.js";
 
 export const siteErrorSchema = z.strictObject({
@@ -99,6 +100,13 @@ export interface GetSignedInUserOptions {
   baseUrl: string;
   appId: string;
   token: string;
+  fetch?: typeof globalThis.fetch;
+}
+
+export interface ExchangeSignInCodeOptions {
+  baseUrl: string;
+  code: string;
+  state: string;
   fetch?: typeof globalThis.fetch;
 }
 
@@ -298,6 +306,102 @@ export async function getSignedInUser(
   return toAccount(parsed.data);
 }
 
+const exchangeResponseSchema = z.object({
+  ok: z.literal(true),
+  access_token: z.string().min(1),
+  user: base44UserSchema,
+});
+
+/**
+ * POST {site}/functions/laptopExchangeCode
+ *
+ * Trades a one-time code and the state from this sign-in attempt for the
+ * person's access token. The code is the body, never the query string. The
+ * response token is the same kind `loginViaEmailPassword` returns. Call
+ * `assertHubAccess` before keeping it.
+ */
+export async function exchangeSignInCode(
+  options: ExchangeSignInCodeOptions,
+): Promise<SignedInSession> {
+  const code = normalizeSignInCode(options.code);
+  const state = options.state.trim();
+  if (!code || !isSignInState(state)) {
+    throw new SiteApiError(
+      401,
+      "unauthorized",
+      "That code is not valid. Sign in with Google again",
+    );
+  }
+
+  let url: URL;
+  try {
+    url = new URL(options.baseUrl);
+  } catch {
+    throw new SiteApiError(
+      400,
+      "bad_site",
+      "Site address must be a full URL, like https://midwesthardenduro.com",
+    );
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new SiteApiError(
+      400,
+      "bad_site",
+      "Site address must be a full URL, like https://midwesthardenduro.com",
+    );
+  }
+  url.pathname = "/functions/laptopExchangeCode";
+  url.search = "";
+  url.hash = "";
+
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  let response: Response;
+  try {
+    response = await fetchImpl(url, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ code, state }),
+    });
+  } catch (error) {
+    throw new SiteApiError(0, "network", networkMessage(error));
+  }
+
+  const body: unknown = await readJson(response);
+  if (!response.ok || !isOk(body)) {
+    if (response.status === 403) {
+      const forbidden = siteErrorSchema.safeParse(body);
+      throw new SiteApiError(
+        403,
+        "forbidden",
+        forbidden.success
+          ? forbidden.data.message
+          : "This account is not a race director or admin",
+      );
+    }
+    throw new SiteApiError(
+      response.status === 401 ? 401 : response.status || 401,
+      "unauthorized",
+      "That code is not valid. Sign in with Google again",
+    );
+  }
+  const parsed = exchangeResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new SiteApiError(
+      502,
+      "bad_response",
+      "The site signed in but did not return an access token",
+    );
+  }
+  return {
+    token: parsed.data.access_token.trim(),
+    account: toAccount(parsed.data.user),
+  };
+}
+
 function authUrl(siteBaseUrl: string, appId: string, kind: "login" | "me"): URL {
   let origin: string;
   try {
@@ -332,6 +436,13 @@ function toAccount(user: z.infer<typeof base44UserSchema>): SiteAccount {
 }
 
 function loginFailure(status: number, body: unknown): SiteApiError {
+  if (status === 400) {
+    return new SiteApiError(
+      400,
+      "no_password",
+      "This account was created with Google and has no password. Use Sign in with Google",
+    );
+  }
   if (status === 401) {
     return new SiteApiError(401, "unauthorized", "That email or password is not right");
   }

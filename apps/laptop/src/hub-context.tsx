@@ -7,6 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
+  completeGoogleSignIn,
   completeSignIn,
   confirmSession,
   downloadRacePackage,
@@ -140,6 +141,28 @@ export function HubProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const rememberSignIn = useCallback(
+    async (
+      generation: number,
+      name: string,
+      origin: string,
+      nextAppId: string,
+      signedIn: SiteAccount,
+    ) => {
+      if (epoch.current !== generation) return;
+      setHasToken(true);
+      await persist(record.current.state, {
+        operatorName: name,
+        baseUrl: origin,
+        appId: nextAppId.trim(),
+        account: signedIn,
+      });
+      if (epoch.current !== generation) return;
+      setNotice(`Signed in as ${signedIn.name}.`);
+    },
+    [persist],
+  );
+
   const signIn = useCallback(
     async (input: {
       operatorName: string;
@@ -151,22 +174,8 @@ export function HubProvider({ children }: { children: ReactNode }) {
       const opened = backend.current;
       if (!opened) throw new Error("The race database is not open");
       const generation = ++epoch.current;
-      const name = input.operatorName.trim();
-      if (!name) {
-        throw new Error("Enter your name. It is written on every changelog entry.");
-      }
-      let origin: string;
-      try {
-        const url = new URL(input.baseUrl.trim());
-        if (url.protocol !== "https:" && url.protocol !== "http:") {
-          throw new Error("bad protocol");
-        }
-        origin = url.origin;
-      } catch {
-        throw new Error(
-          "Site address must be a full URL, like https://midwesthardenduro.com",
-        );
-      }
+      const name = requireOperatorName(input.operatorName);
+      const origin = requireSiteOrigin(input.baseUrl);
       const signedIn = await completeSignIn(opened.credentials, {
         baseUrl: origin,
         appId: input.appId,
@@ -174,17 +183,33 @@ export function HubProvider({ children }: { children: ReactNode }) {
         password: input.password,
         fetch: siteFetch,
       });
-      if (epoch.current !== generation) return;
-      setHasToken(true);
-      await persist(record.current.state, {
-        operatorName: name,
-        baseUrl: origin,
-        appId: input.appId.trim(),
-        account: signedIn,
-      });
-      setNotice(`Signed in as ${signedIn.name}.`);
+      await rememberSignIn(generation, name, origin, input.appId, signedIn);
     },
-    [persist],
+    [rememberSignIn],
+  );
+
+  const signInWithGoogle = useCallback(
+    async (input: {
+      operatorName: string;
+      baseUrl: string;
+      appId: string;
+      code: string;
+      state: string;
+    }) => {
+      const opened = backend.current;
+      if (!opened) throw new Error("The race database is not open");
+      const generation = ++epoch.current;
+      const name = requireOperatorName(input.operatorName);
+      const origin = requireSiteOrigin(input.baseUrl);
+      const signedIn = await completeGoogleSignIn(opened.credentials, {
+        baseUrl: origin,
+        code: input.code,
+        state: input.state,
+        fetch: siteFetch,
+      });
+      await rememberSignIn(generation, name, origin, input.appId, signedIn);
+    },
+    [rememberSignIn],
   );
 
   const saveName = useCallback(
@@ -273,6 +298,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
       state,
       notice,
       signIn,
+      signInWithGoogle,
       saveName,
       signOut,
       download,
@@ -290,6 +316,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
       state,
       notice,
       signIn,
+      signInWithGoogle,
       saveName,
       signOut,
       download,
@@ -298,4 +325,26 @@ export function HubProvider({ children }: { children: ReactNode }) {
   );
 
   return <HubContext.Provider value={api}>{children}</HubContext.Provider>;
+}
+
+function requireOperatorName(value: string): string {
+  const name = value.trim();
+  if (!name) {
+    throw new Error("Enter your name. It is written on every changelog entry.");
+  }
+  return name;
+}
+
+function requireSiteOrigin(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl.trim());
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      throw new Error("bad protocol");
+    }
+    return url.origin;
+  } catch {
+    throw new Error(
+      "Site address must be a full URL, like https://midwesthardenduro.com",
+    );
+  }
 }

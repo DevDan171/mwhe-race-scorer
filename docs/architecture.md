@@ -22,8 +22,8 @@ Windows app, Tauri 2 + React. It is the only place that edits start times, penal
 Phase 1 stores the race in SQLite and talks to the site for the race package:
 
 - SQLite is the source of truth. The browser preview uses sql.js and flushes the file to IndexedDB after each save. The Tauri shell uses `tauri-plugin-sql` (`sqlite:mwhe-hub.db`). Migrations live in `apps/laptop/src/db/migrations.ts` and run from TypeScript, so the same SQL is what the tests apply.
-- Sign-in is the person's MidwestHardEnduro.com email and password. The laptop calls Base44's login endpoint, keeps that user's access token, and never shows the token. The Tauri shell stores it with the `keyring` crate (Windows Credential Manager). The browser preview keeps it in memory. There is no refresh call. A 401 asks them to sign in again. A race already on the laptop keeps working offline. See [site-api.md](site-api.md).
-- `signInWithPassword` and `getRacePackage` in `@mwhe/core` are the site client. They take `fetch` so tests can call the mock site, and so the Android app can reuse them. The Tauri shell passes the native HTTP client.
+- Sign-in is the person's MidwestHardEnduro.com email and password, or Google sign-in on the website. Email and password uses Base44's login endpoint. Google opens the site, which hands the laptop a one-time code; the laptop exchanges that code for the same kind of access token. The token is never shown. The Tauri shell stores it with the `keyring` crate (Windows Credential Manager) and listens on `127.0.0.1` for the code. The browser preview keeps the token in memory and can type the code. There is no refresh call. A 401 asks them to sign in again. A race already on the laptop keeps working offline. See [site-api.md](site-api.md).
+- `signInWithPassword`, `exchangeSignInCode`, and `getRacePackage` in `@mwhe/core` are the site client. They take `fetch` so tests can call the mock site, and so the Android app can reuse them. The Tauri shell passes the native HTTP client. The loopback listener that receives the Google code is Rust in `apps/laptop/src-tauri` and is not compiled in CI.
 
 Still later:
 
@@ -41,7 +41,7 @@ Phase 0 builds the web bundle. The Android project is not generated. See [releas
 
 ## Core
 
-`packages/core` is TypeScript. Scoring, registration, and roster deltas do not read the clock, the disk, or the network. Callers pass timestamps, ids, and `fetch`. `scoreRace` returns a `ResultsPayload` plus warnings. `signInWithPassword` and `getRacePackage` are the site calls, and `startMockSite` is the local stand-in used by tests.
+`packages/core` is TypeScript. Scoring, registration, and roster deltas do not read the clock, the disk, or the network. Callers pass timestamps, ids, and `fetch`. `scoreRace` returns a `ResultsPayload` plus warnings. `signInWithPassword`, `exchangeSignInCode`, and `getRacePackage` are the site calls, and `startMockSite` is the local stand-in used by tests.
 
 `schemaVersion` is `1` on every persisted document. Bump it when a document shape changes in a breaking way. The git tag is a separate version. See [release.md](release.md).
 

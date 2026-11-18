@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-sign-in-commands"
+description = "Open the system browser for Google sign-in and receive a one-time code on a loopback URL."
+commands.allow = [
+  "open_sign_in_page",
+  "start_sign_in_callback",
+  "wait_sign_in_callback",
+  "cancel_sign_in_callback",
+]
