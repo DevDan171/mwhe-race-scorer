@@ -8,14 +8,18 @@ export {
   eventRegistrationSchema,
   racePackageSchema,
   raceSchema,
+  raceLengthSchema,
   startRowSchema,
   riderClassSchema,
   defaultRace,
+  primaryRace,
+  sameRaceLength,
   type Check,
   type Event,
   type SeriesRider,
   type EventRegistration,
   type Race,
+  type RaceLength,
   type StartRow,
   type RacePackage,
 } from "./schemas/race-package.js";
@@ -90,12 +94,15 @@ export {
   registerNewRider,
   changeRiderNumber,
   changeRiderClass,
-  setRaceTimeLimit,
-  setRaceLaps,
+  setRaceLength,
+  setRowGapSeconds,
+  setPlannedStart,
   renameCheck,
   moveCheck,
   renameStartRow,
   moveClassToStartRow,
+  addClassToStartRow,
+  removeClassFromStartRow,
   type RaceDayState,
   type ChangeAudit,
   type RacePackageCounts,
@@ -154,6 +161,14 @@ export {
 } from "./fixtures/sample-race-package.js";
 
 export { scoreRace, type ScoreRaceResult } from "./scoring/engine.js";
+export {
+  planStartOrder,
+  rowStartedAt,
+  type PlannedRider,
+  type PlannedRow,
+  type StartPlan,
+  type StartRowWarning,
+} from "./scoring/start-order.js";
 export {
   scoreRaceInputSchema,
   type ScoreRaceInput,

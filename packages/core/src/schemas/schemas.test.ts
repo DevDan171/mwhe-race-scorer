@@ -33,6 +33,7 @@ describe("race package", () => {
       name: "Day Of",
       class: "C",
       seriesId: null,
+      startRow: null,
     });
     expect(() => racePackageSchema.parse(race)).toThrow(/day-of/i);
   });
@@ -59,8 +60,66 @@ describe("race package", () => {
 
   it("rejects a primary race that disagrees with the event course", () => {
     const race = clone(createDemoRace().race);
-    race.event.timeLimitMinutes = 90;
+    race.event.length = { mode: "time", minutes: 90 };
     expect(() => racePackageSchema.parse(race)).toThrow(/primary race/i);
+  });
+
+  it("accepts one class on several start rows", () => {
+    const race = clone(createDemoRace().race);
+    const course = race.races[0];
+    if (!course) throw new Error("fixture has no race");
+    course.startRows.push({
+      id: "timber-row-a",
+      order: 3,
+      label: "A",
+      classes: ["A"],
+    });
+    const parsed = racePackageSchema.parse(race);
+    const rows = parsed.races[0]?.startRows.filter((row) => row.classes.includes("A"));
+    expect(rows).toHaveLength(2);
+  });
+
+  it("reads an older package that stored a time limit instead of a length", () => {
+    const race = clone(createDemoRace().race);
+    const legacyEvent = {
+      id: race.event.id,
+      name: race.event.name,
+      date: race.event.date,
+      timeLimitMinutes: 180,
+      checks: race.event.checks,
+    };
+    const legacyRaces = race.races.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      order: entry.order,
+      timeLimitMinutes: 180,
+      laps: 1,
+      checks: entry.checks,
+      startRows: entry.startRows,
+    }));
+    const parsed = racePackageSchema.parse({
+      ...race,
+      event: legacyEvent,
+      races: legacyRaces,
+    });
+    expect(parsed.event.length).toEqual({ mode: "time", minutes: 180 });
+    expect(parsed.races[0]?.length).toEqual({ mode: "time", minutes: 180 });
+    expect(parsed.event).not.toHaveProperty("timeLimitMinutes");
+    expect(parsed.races[0]).not.toHaveProperty("laps");
+    expect(parsed.registrations[0]?.startRow).toBeNull();
+    expect(parsed.races[0]?.rowGapSeconds).toBe(0);
+    expect(parsed.races[0]?.plannedStart).toBeNull();
+  });
+
+  it("keeps a lap race with no lap count from gaining a time limit", () => {
+    const race = clone(createDemoRace().race);
+    race.event.length = { mode: "laps", laps: null };
+    const course = race.races[0];
+    if (!course) throw new Error("fixture has no race");
+    course.length = { mode: "laps", laps: null };
+    const parsed = racePackageSchema.parse(race);
+    expect(parsed.event.length).toEqual({ mode: "laps", laps: null });
+    expect(parsed.event).not.toHaveProperty("timeLimitMinutes");
   });
 
   it("rejects the wrong schema version", () => {

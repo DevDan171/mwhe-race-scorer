@@ -61,20 +61,28 @@ function summary(entry: ChangelogEntry): string {
   if (entry.entity.type === "registration" && before.class !== after.class) {
     return `Class ${text(before.class)} changed to ${text(after.class)} for #${text(after.number)}`;
   }
-  if (
-    entry.entity.type === "race" &&
-    before.timeLimitMinutes !== after.timeLimitMinutes
-  ) {
-    return `Time limit ${text(before.timeLimitMinutes)} changed to ${text(after.timeLimitMinutes)} min`;
+  if (entry.entity.type === "race" && "length" in after) {
+    return `Race length ${describeLength(before.length)} changed to ${describeLength(after.length)}`;
   }
-  if (
-    entry.entity.type === "race" &&
-    before.laps !== after.laps &&
-    after.laps !== undefined
-  ) {
-    return `Laps changed to ${text(after.laps)}`;
+  if (entry.entity.type === "race" && after.rowGapSeconds !== undefined) {
+    return `Row gap changed to ${text(after.rowGapSeconds)} seconds`;
+  }
+  if (entry.entity.type === "race" && "plannedStart" in after) {
+    return after.plannedStart
+      ? `Planned start changed to ${text(after.plannedStart)}`
+      : "Planned start cleared";
   }
   return `${entry.action} ${entry.entity.type}`;
+}
+
+function describeLength(value: unknown): string {
+  if (!value || typeof value !== "object") return "—";
+  const length = value as { mode?: string; minutes?: number; laps?: number | null };
+  if (length.mode === "time") return `${text(length.minutes)} min`;
+  if (length.mode === "laps") {
+    return length.laps == null ? "laps, until the finish" : `${text(length.laps)} laps`;
+  }
+  return "—";
 }
 
 function record(value: unknown): Record<string, unknown> {

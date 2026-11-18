@@ -38,6 +38,7 @@ describe("phone roster and sync", () => {
       name: "Riley Cole",
       class: "C",
       seriesId: null,
+      startRow: null,
     });
     const roster = projectPhoneRoster(race, 4);
     expect(roster.version).toBe(4);

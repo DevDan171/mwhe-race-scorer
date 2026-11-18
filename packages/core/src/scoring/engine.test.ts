@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { PROTEST_WINDOW_MINUTES, SCHEMA_VERSION } from "../version.js";
 import {
+  EPOCH,
   iso,
   isoMs,
   makePenalty,
@@ -508,5 +509,92 @@ describe("scoreRace", () => {
       code: "duplicate_start_time",
       riderNumber: 1,
     });
+  });
+
+  it("counts a timed race from each row's own start", () => {
+    const result = scoreRace(
+      makeScoreInput({
+        riders: [
+          { number: 1, name: "Early", class: "A", startRow: 1 },
+          { number: 2, name: "Late", class: "A", startRow: 2 },
+        ],
+        length: { mode: "time", minutes: 10 },
+        rowGapSeconds: 60,
+        plannedStart: EPOCH,
+        startRows: [
+          { id: "row-1", order: 1, label: "A", classes: ["A"] },
+          { id: "row-2", order: 2, label: "A", classes: ["A"] },
+        ],
+        punches: [
+          makePunch({ n: 1, riderNumber: 1, checkId: "cp1", offsetSeconds: 650 }),
+          makePunch({ n: 2, riderNumber: 2, checkId: "cp1", offsetSeconds: 650 }),
+        ],
+      }),
+    );
+    expect(row(result.payload.rows, 1).checkResults[0]).toMatchObject({
+      overLimit: true,
+      countsForScore: false,
+    });
+    expect(row(result.payload.rows, 1).status).toBe("DNF");
+    expect(row(result.payload.rows, 2)).toMatchObject({
+      checks: 1,
+      elapsedSeconds: 590,
+      status: "finished",
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("uses the row number, not the count of rows, when a number is skipped", () => {
+    const result = scoreRace(
+      makeScoreInput({
+        riders: [{ number: 4, name: "Fourth", class: "A", startRow: 3 }],
+        rowGapSeconds: 60,
+        plannedStart: EPOCH,
+        startRows: [
+          { id: "row-1", order: 1, label: "Pro", classes: ["Pro"] },
+          { id: "row-3", order: 3, label: "A", classes: ["A"] },
+        ],
+        punches: [
+          makePunch({ n: 1, riderNumber: 4, checkId: "cp1", offsetSeconds: 200 }),
+        ],
+      }),
+    );
+    expect(row(result.payload.rows, 4).elapsedSeconds).toBe(80);
+  });
+
+  it("lets an entered start time replace the row clock", () => {
+    const result = scoreRace(
+      makeScoreInput({
+        riders: [{ number: 2, name: "Late", class: "A", startRow: 2 }],
+        rowGapSeconds: 60,
+        plannedStart: EPOCH,
+        startRows: [
+          { id: "row-1", order: 1, label: "A", classes: ["A"] },
+          { id: "row-2", order: 2, label: "A", classes: ["A"] },
+        ],
+        startTimes: [makeStart(2, 10)],
+        punches: [makePunch({ n: 1, riderNumber: 2, checkId: "cp1", offsetSeconds: 70 })],
+      }),
+    );
+    expect(row(result.payload.rows, 2).elapsedSeconds).toBe(60);
+  });
+
+  it("does not apply a time limit when the race runs until the finish", () => {
+    const result = scoreRace(
+      makeScoreInput({
+        riders: [alex],
+        length: { mode: "laps", laps: null },
+        startTimes: [makeStart(1)],
+        punches: [
+          makePunch({ n: 1, riderNumber: 1, checkId: "cp1", offsetSeconds: 200 * 60 }),
+        ],
+      }),
+    );
+    expect(row(result.payload.rows, 1)).toMatchObject({
+      checks: 1,
+      status: "finished",
+      elapsedSeconds: 12000,
+    });
+    expect(row(result.payload.rows, 1).checkResults[0]?.overLimit).toBe(false);
   });
 });

@@ -40,4 +40,10 @@ export type ScoringWarning =
       penaltyId: string;
       checkId: string;
     }
-  | { code: "disqualification_unknown_rider"; riderNumber: number };
+  | { code: "disqualification_unknown_rider"; riderNumber: number }
+  | {
+      code: "start_row_out_of_range";
+      riderNumber: number;
+      startRow: number;
+      classRowNumbers: number[];
+    };

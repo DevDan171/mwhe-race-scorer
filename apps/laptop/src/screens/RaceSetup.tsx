@@ -1,11 +1,15 @@
 import {
+  addClassToStartRow,
   moveCheck,
-  moveClassToStartRow,
+  planStartOrder,
+  removeClassFromStartRow,
   renameCheck,
   renameStartRow,
   RIDER_CLASSES,
-  setRaceLaps,
-  setRaceTimeLimit,
+  setPlannedStart,
+  setRaceLength,
+  setRowGapSeconds,
+  type RaceLength,
   type RiderClass,
 } from "@mwhe/core";
 import { useEffect, useState } from "react";
@@ -20,14 +24,24 @@ export function RaceSetup() {
   const [raceId, setRaceId] = useState(races[0]?.id ?? "");
   const selected = races.find((race) => race.id === raceId) ?? races[0];
   const [reason, setReason] = useState("");
+  const [mode, setMode] = useState<RaceLength["mode"]>("time");
   const [minutes, setMinutes] = useState("");
   const [laps, setLaps] = useState("");
+  const [gap, setGap] = useState("");
+  const [start, setStart] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selected) return;
-    setMinutes(String(selected.timeLimitMinutes));
-    setLaps(String(selected.laps));
+    setMode(selected.length.mode);
+    setMinutes(selected.length.mode === "time" ? String(selected.length.minutes) : "");
+    setLaps(
+      selected.length.mode === "laps" && selected.length.laps !== null
+        ? String(selected.length.laps)
+        : "",
+    );
+    setGap(String(selected.rowGapSeconds));
+    setStart(toLocalInput(selected.plannedStart));
   }, [selected]);
 
   if (!hub.state || !selected) {
@@ -40,6 +54,7 @@ export function RaceSetup() {
   }
 
   const race = selected;
+  const plan = planStartOrder(race, hub.state.race.registrations);
 
   async function run(action: () => Promise<void>) {
     setError(null);
@@ -83,59 +98,59 @@ export function RaceSetup() {
       </section>
 
       <section className="panel">
-        <h2>Time limit</h2>
-        <div className="inline">
-          <Field label="Minutes">
+        <h2>Race length</h2>
+        <p className="hint">{describeLength(race.length)}</p>
+        <div className="choice-row" role="group" aria-label="Length mode">
+          <button
+            type="button"
+            className={mode === "time" ? "choice active" : "choice"}
+            onClick={() => setMode("time")}
+          >
+            Time
+          </button>
+          <button
+            type="button"
+            className={mode === "laps" ? "choice active" : "choice"}
+            onClick={() => setMode("laps")}
+          >
+            Laps
+          </button>
+        </div>
+        {mode === "time" ? (
+          <Field label="Minutes" hint="Counted from each row's own start.">
             <input
               inputMode="numeric"
               value={minutes}
               onChange={(event) => setMinutes(event.target.value)}
             />
           </Field>
-          <button
-            type="button"
-            className="primary"
-            onClick={() =>
-              void run(() =>
-                hub.change(why, (current, audit) =>
-                  setRaceTimeLimit(current, {
-                    raceId: race.id,
-                    timeLimitMinutes: Number(minutes),
-                    audit,
-                  }),
-                ),
-              )
-            }
-          >
-            Save time limit
-          </button>
-        </div>
-        <div className="inline">
-          <Field label="Laps">
+        ) : (
+          <Field label="Laps" hint="Leave blank to run until the finish. No time limit.">
             <input
               inputMode="numeric"
               value={laps}
+              placeholder="Until the finish"
               onChange={(event) => setLaps(event.target.value)}
             />
           </Field>
-          <button
-            type="button"
-            className="primary"
-            onClick={() =>
-              void run(() =>
-                hub.change(why, (current, audit) =>
-                  setRaceLaps(current, { raceId: race.id, laps: Number(laps), audit }),
-                ),
-              )
-            }
-          >
-            Save laps
-          </button>
-        </div>
-        <p className="hint">
-          Checks are listed once, in lap order, and ridden {race.laps}{" "}
-          {race.laps === 1 ? "time" : "times"}.
-        </p>
+        )}
+        <button
+          type="button"
+          className="primary"
+          onClick={() =>
+            void run(() =>
+              hub.change(why, (current, audit) =>
+                setRaceLength(current, {
+                  raceId: race.id,
+                  length: lengthFromForm(mode, minutes, laps),
+                  audit,
+                }),
+              ),
+            )
+          }
+        >
+          Save race length
+        </button>
       </section>
 
       <section className="panel">
@@ -208,52 +223,159 @@ export function RaceSetup() {
 
       <section className="panel">
         <h2>Start rows</h2>
+        <p className="hint">
+          Row numbers run across the whole race. Row 1 leaves at the planned start. Row N
+          leaves (N - 1) times the gap later. A class can use more than one row. Riders
+          with no assigned row are lined up by number, lowest numbers on the earliest row
+          of their class, split as evenly as the count allows.
+        </p>
+        <div className="inline">
+          <Field label="Row gap (seconds)">
+            <input
+              inputMode="numeric"
+              value={gap}
+              onChange={(event) => setGap(event.target.value)}
+            />
+          </Field>
+          <button
+            type="button"
+            className="primary"
+            onClick={() =>
+              void run(() =>
+                hub.change(why, (current, audit) =>
+                  setRowGapSeconds(current, {
+                    raceId: race.id,
+                    rowGapSeconds: Number(gap),
+                    audit,
+                  }),
+                ),
+              )
+            }
+          >
+            Save gap
+          </button>
+        </div>
+        <div className="inline">
+          <Field label="Planned start of row 1">
+            <input
+              type="datetime-local"
+              value={start}
+              onChange={(event) => setStart(event.target.value)}
+            />
+          </Field>
+          <button
+            type="button"
+            className="primary"
+            onClick={() =>
+              void run(() =>
+                hub.change(why, (current, audit) =>
+                  setPlannedStart(current, {
+                    raceId: race.id,
+                    plannedStart: start ? new Date(start).toISOString() : null,
+                    audit,
+                  }),
+                ),
+              )
+            }
+          >
+            Save start
+          </button>
+        </div>
         <div className="stack">
-          {[...race.startRows]
-            .sort((a, b) => a.order - b.order)
-            .map((row) => (
-              <article key={row.id} className="row-card">
-                <RowLabel
-                  label={row.label}
-                  onSave={(label) =>
-                    void run(() =>
-                      hub.change(why, (current, audit) =>
-                        renameStartRow(current, {
-                          raceId: race.id,
-                          startRowId: row.id,
-                          label,
-                          audit,
-                        }),
-                      ),
-                    )
-                  }
-                />
-                <div className="chips">
-                  {row.classes.length === 0 ? (
-                    <span className="hint">No classes on this row.</span>
-                  ) : null}
-                  {row.classes.map((riderClass) => (
-                    <span key={riderClass} className="chip">
-                      {riderClass}
-                    </span>
+          {plan.rows.map((row) => (
+            <article key={row.id} className="row-card">
+              <h3>
+                Row {row.rowNumber}
+                {row.classes.length > 0 ? ` · ${row.classes.join(", ")}` : ""}
+              </h3>
+              <p className="row-meta">
+                {row.startedAt
+                  ? `${formatClock(row.startedAt)} · start plus ${row.rowNumber - 1} × ${race.rowGapSeconds}s`
+                  : "No planned start, so this row has no clock yet."}
+              </p>
+              <RowLabel
+                label={row.label}
+                onSave={(label) =>
+                  void run(() =>
+                    hub.change(why, (current, audit) =>
+                      renameStartRow(current, {
+                        raceId: race.id,
+                        startRowId: row.id,
+                        label,
+                        audit,
+                      }),
+                    ),
+                  )
+                }
+              />
+              <div className="chips">
+                {row.classes.length === 0 ? (
+                  <span className="hint">No classes on this row.</span>
+                ) : null}
+                {row.classes.map((riderClass) => (
+                  <span key={riderClass} className="chip">
+                    {riderClass}
+                    <button
+                      type="button"
+                      className="linkish"
+                      aria-label={`Remove ${riderClass} from row ${row.rowNumber}`}
+                      onClick={() =>
+                        void run(() =>
+                          hub.change(why, (current, audit) =>
+                            removeClassFromStartRow(current, {
+                              raceId: race.id,
+                              startRowId: row.id,
+                              riderClass,
+                              audit,
+                            }),
+                          ),
+                        )
+                      }
+                    >
+                      Remove
+                    </button>
+                  </span>
+                ))}
+              </div>
+              {row.riders.length === 0 ? (
+                <p className="hint">No riders on this row.</p>
+              ) : (
+                <div className="stack tight">
+                  {row.riders.map((rider) => (
+                    <div key={rider.riderNumber} className="rider static">
+                      <span className="plate">{rider.riderNumber}</span>
+                      <span>
+                        <strong>{rider.name}</strong>
+                        <small>
+                          {rider.class}
+                          {rider.placement === "assigned"
+                            ? " · assigned to this row"
+                            : " · placed by number"}
+                          {rider.ignoredStartRow !== null
+                            ? ` · site row ${rider.ignoredStartRow} is not a ${rider.class} row`
+                            : ""}
+                        </small>
+                      </span>
+                    </div>
                   ))}
                 </div>
-                <MoveClass
-                  onMove={(riderClass) =>
-                    void run(() =>
-                      hub.change(why, (current, audit) =>
-                        moveClassToStartRow(current, {
-                          raceId: race.id,
-                          startRowId: row.id,
-                          riderClass,
-                          audit,
-                        }),
-                      ),
-                    )
-                  }
-                />
-              </article>
-            ))}
+              )}
+              <AddClass
+                onAdd={(riderClass) =>
+                  void run(() =>
+                    hub.change(why, (current, audit) =>
+                      addClassToStartRow(current, {
+                        raceId: race.id,
+                        startRowId: row.id,
+                        riderClass,
+                        audit,
+                      }),
+                    ),
+                  )
+                }
+              />
+            </article>
+          ))}
         </div>
       </section>
     </div>
@@ -266,10 +388,47 @@ function PageTitle() {
       <p className="eyebrow">Course</p>
       <h1>Race Setup</h1>
       <p className="lede">
-        Time limit, checks in lap order, start rows, and classes. Every edit is logged.
+        Time or laps, checks, and start rows. A class can leave on more than one row.
+        Every edit is logged.
       </p>
     </header>
   );
+}
+
+function describeLength(length: RaceLength): string {
+  if (length.mode === "time") {
+    return `Time limit: ${length.minutes} minutes, counted from each row's own start.`;
+  }
+  if (length.laps === null) {
+    return "Lap race. It runs until the finish. There is no time limit.";
+  }
+  return `Lap race. ${length.laps} ${length.laps === 1 ? "lap" : "laps"} to the finish. There is no time limit.`;
+}
+
+function lengthFromForm(
+  mode: RaceLength["mode"],
+  minutes: string,
+  laps: string,
+): RaceLength {
+  if (mode === "time") return { mode: "time", minutes: Number(minutes) };
+  const trimmed = laps.trim();
+  return { mode: "laps", laps: trimmed === "" ? null : Number(trimmed) };
+}
+
+function formatClock(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
+function toLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function CheckName({ name, onSave }: { name: string; onSave: (name: string) => void }) {
@@ -302,16 +461,16 @@ function RowLabel({ label, onSave }: { label: string; onSave: (label: string) =>
   );
 }
 
-function MoveClass({ onMove }: { onMove: (riderClass: RiderClass) => void }) {
+function AddClass({ onAdd }: { onAdd: (riderClass: RiderClass) => void }) {
   const [riderClass, setRiderClass] = useState<RiderClass | "">("");
   return (
     <div className="inline">
       <select
-        aria-label="Class to put on this row"
+        aria-label="Class to add to this row"
         value={riderClass}
         onChange={(event) => setRiderClass(event.target.value as RiderClass | "")}
       >
-        <option value="">Move a class here</option>
+        <option value="">Add a class to this row</option>
         {RIDER_CLASSES.map((item) => (
           <option key={item} value={item}>
             {item}
@@ -324,11 +483,11 @@ function MoveClass({ onMove }: { onMove: (riderClass: RiderClass) => void }) {
         disabled={riderClass === ""}
         onClick={() => {
           if (riderClass === "") return;
-          onMove(riderClass);
+          onAdd(riderClass);
           setRiderClass("");
         }}
       >
-        Move class
+        Add class
       </button>
     </div>
   );

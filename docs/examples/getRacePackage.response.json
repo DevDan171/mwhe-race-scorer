@@ -6,7 +6,10 @@
       "id": "gnaw-bone-2026",
       "name": "Round 4 — Gnaw Bone",
       "date": "2026-09-12",
-      "timeLimitMinutes": 180,
+      "length": {
+        "mode": "time",
+        "minutes": 180
+      },
       "checks": [
         {
           "id": "cp1",
@@ -35,8 +38,10 @@
         "id": "gnaw-bone-championship",
         "name": "Championship",
         "order": 1,
-        "timeLimitMinutes": 180,
-        "laps": 1,
+        "length": {
+          "mode": "time",
+          "minutes": 180
+        },
         "checks": [
           {
             "id": "cp1",
@@ -63,23 +68,45 @@
           {
             "id": "row-pro",
             "order": 1,
-            "label": "Row 1",
-            "classes": ["Pro", "A", "Womens Pro", "Electric Pro"]
+            "label": "Pro",
+            "classes": ["Pro", "Womens Pro", "Electric Pro"]
+          },
+          {
+            "id": "row-a-2",
+            "order": 2,
+            "label": "A",
+            "classes": ["A"]
+          },
+          {
+            "id": "row-a-3",
+            "order": 3,
+            "label": "A",
+            "classes": ["A"]
+          },
+          {
+            "id": "row-a-4",
+            "order": 4,
+            "label": "A",
+            "classes": ["A"]
           },
           {
             "id": "row-sportsman",
-            "order": 2,
-            "label": "Row 2",
+            "order": 5,
+            "label": "Sportsman",
             "classes": ["B", "C", "+40A", "+40B", "+40C", "Womens", "Electric Sportsman"]
           }
-        ]
+        ],
+        "rowGapSeconds": 60,
+        "plannedStart": "2026-09-12T14:00:00.000Z"
       },
       {
         "id": "gnaw-bone-youth",
         "name": "Youth",
         "order": 2,
-        "timeLimitMinutes": 60,
-        "laps": 2,
+        "length": {
+          "mode": "laps",
+          "laps": 2
+        },
         "checks": [
           {
             "id": "y1",
@@ -99,7 +126,9 @@
             "label": "Youth row",
             "classes": ["65/85", "50cc"]
           }
-        ]
+        ],
+        "rowGapSeconds": 0,
+        "plannedStart": null
       }
     ],
     "classes": [
@@ -129,6 +158,12 @@
         "name": "Blake Iverson",
         "number": 7,
         "class": "Pro"
+      },
+      {
+        "seriesId": "s-avery",
+        "name": "Avery Quinn",
+        "number": 33,
+        "class": "A"
       },
       {
         "seriesId": "s-casey",
@@ -196,55 +231,71 @@
         "riderNumber": 1,
         "name": "Alex Hargrove",
         "class": "Pro",
-        "seriesId": "s-alex"
+        "seriesId": "s-alex",
+        "startRow": null
       },
       {
         "riderNumber": 7,
         "name": "Blake Iverson",
         "class": "Pro",
-        "seriesId": "s-blake"
+        "seriesId": "s-blake",
+        "startRow": null
+      },
+      {
+        "riderNumber": 33,
+        "name": "Avery Quinn",
+        "class": "A",
+        "seriesId": "s-avery",
+        "startRow": null
       },
       {
         "riderNumber": 42,
         "name": "Casey Nguyen",
         "class": "A",
-        "seriesId": "s-casey"
+        "seriesId": "s-casey",
+        "startRow": null
       },
       {
         "riderNumber": 55,
         "name": "Dana Brooks",
         "class": "A",
-        "seriesId": "s-dana"
+        "seriesId": "s-dana",
+        "startRow": 4
       },
       {
         "riderNumber": 88,
         "name": "Erin Vasquez",
         "class": "B",
-        "seriesId": "s-erin"
+        "seriesId": "s-erin",
+        "startRow": null
       },
       {
         "riderNumber": 90,
         "name": "Fran Okonkwo",
         "class": "B",
-        "seriesId": "s-fran"
+        "seriesId": "s-fran",
+        "startRow": null
       },
       {
         "riderNumber": 120,
         "name": "Gale Petrov",
         "class": "+40A",
-        "seriesId": "s-gale"
+        "seriesId": "s-gale",
+        "startRow": null
       },
       {
         "riderNumber": 64,
         "name": "Jules Marin",
         "class": "C",
-        "seriesId": "s-jules"
+        "seriesId": "s-jules",
+        "startRow": null
       },
       {
         "riderNumber": 214,
         "name": "Kira Holt",
         "class": "Womens",
-        "seriesId": "s-kira"
+        "seriesId": "s-kira",
+        "startRow": null
       }
     ]
   }

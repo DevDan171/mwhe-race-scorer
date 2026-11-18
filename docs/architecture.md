@@ -47,4 +47,4 @@ Phase 0 builds the web bundle. The Android project is not generated. See [releas
 
 ## Time
 
-Each phone stamps punches from its own GPS-set clock. The laptop stores those timestamps as-is. Total time for a rider is the last valid punch minus that rider's start, plus penalties. Riders do not share a start instant unless the laptop sets them that way.
+Each phone stamps punches from its own GPS-set clock. The laptop stores those timestamps as-is. Total time for a rider is the last valid punch minus that rider's start, plus penalties. Riders on the same start row share that row's clock when the race has a planned start. Row N leaves at the planned start plus the row gap times (N - 1). A start entered on the laptop replaces the row clock for that rider. A timed race counts its limit from the rider's own start. A lap race has no time limit.

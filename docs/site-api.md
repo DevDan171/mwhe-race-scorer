@@ -202,17 +202,20 @@ Check the role **before** `base44.asServiceRole`. Service role skips entity rule
 
 | Field                      | Meaning                                                                                                                                                                |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schemaVersion`            | Always `1`.                                                                                                                                                            |
-| `event`                    | `id`, `name`, `date` (`YYYY-MM-DD`), `timeLimitMinutes`, `checks`.                                                                                                     |
+| `schemaVersion`            | Always `1`. Older packages that still have `timeLimitMinutes` are read as a timed race.                                                                                |
+| `event`                    | `id`, `name`, `date` (`YYYY-MM-DD`), `length`, `checks`.                                                                                                               |
+| `event.length`             | Same length as the primary race. `{ "mode": "time", "minutes": 120 }` or `{ "mode": "laps", "laps": 2 }`. `laps: null` runs until the finish and has no time limit.    |
 | `event.checks`             | The course of the **primary race** (lowest `order`). Each check has `id`, `order` (unique, starting at 1), and `name`.                                                 |
 | `races`                    | One or more races. Unique `id` and unique `order`.                                                                                                                     |
-| `races[].timeLimitMinutes` | Whole minutes, at least 1. The primary race's limit **must equal** `event.timeLimitMinutes`.                                                                           |
-| `races[].laps`             | How many times that race's check list is ridden.                                                                                                                       |
+| `races[].length`           | One choice, time or laps. The primary race's length **must equal** `event.length`. A time limit is counted from each row's own start.                                  |
+| `races[].rowGapSeconds`    | Whole seconds, 0 or more, between row numbers. Defaults to 0 when omitted.                                                                                             |
+| `races[].plannedStart`     | When row 1 leaves, ISO-8601 with an offset, or null. Row N leaves at this time plus the gap times (N - 1).                                                             |
 | `races[].checks`           | Lap order for that race. The primary race's list **must equal** `event.checks`, same ids, order numbers, names, and array order. Other races may use a shorter course. |
-| `races[].startRows`        | At least one row. `id`, `order`, `label`, and `classes`. A class appears on at most one row in a race.                                                                 |
+| `races[].startRows`        | At least one row. `id`, `order`, `label`, and `classes`. `order` is the row number across the whole race. A class may be on several rows.                              |
 | `classes`                  | The official list, in this order: Pro, A, B, C, +40A, +40B, +40C, Womens, Womens Pro, Electric Sportsman, Electric Pro, 65/85, 50cc.                                   |
 | `riders`                   | Series master list. `seriesId`, `name`, `number`, `class`. Numbers are unique across the series, not per class. Series ids are unique.                                 |
-| `registrations`            | Who is already in this event. `riderNumber`, `name`, `class`, `seriesId`. Numbers are unique inside the event.                                                         |
+| `registrations`            | Who is already in this event. `riderNumber`, `name`, `class`, `seriesId`, `startRow`. Numbers are unique inside the event.                                             |
+| `registrations[].startRow` | Race-wide row number from `ScoringRoster.start_row`, or null. Null riders are placed by number. See [scoring rules](scoring-rules.md).                                 |
 
 Leave out contact fields (email, phone, address, emergency contact). The laptop does not need them, and they must not be copied onto checkpoint phones later.
 
@@ -224,13 +227,15 @@ The registration `name` and `class` are what results use that day. They may diff
 
 Always return JSON, including on failure. `error` is a stable code. `message` is a short sentence a race director can read.
 
-| HTTP | `error`            | When                                                                |
-| ---- | ------------------ | ------------------------------------------------------------------- |
-| 400  | `missing_event_id` | `eventId` is missing or blank.                                      |
-| 401  | `unauthorized`     | No bearer token, or the token does not match a user.                |
-| 403  | `forbidden`        | The user is signed in but is not `race_director` or `admin`.        |
-| 404  | `event_not_found`  | No event with that id.                                              |
-| 500  | `server_error`     | Unexpected failure. Do not leak stack traces or rider contact data. |
+| HTTP | `error`              | When                                                                                              |
+| ---- | -------------------- | ------------------------------------------------------------------------------------------------- |
+| 400  | `missing_event_id`   | `eventId` is missing or blank.                                                                    |
+| 401  | `unauthorized`       | No bearer token, or the token does not match a user.                                              |
+| 403  | `forbidden`          | The user is signed in but is not `race_director` or `admin`.                                      |
+| 404  | `event_not_found`    | No event with that id.                                                                            |
+| 405  | `method_not_allowed` | Not GET or POST.                                                                                  |
+| 409  | `event_not_ready`    | The event has no name or date, no race with checkpoints, or a race length the laptop cannot read. |
+| 500  | `server_error`       | Unexpected failure. Do not leak stack traces or rider contact data.                               |
 
 ```json
 {
@@ -242,14 +247,63 @@ Always return JSON, including on failure. `error` is a stable code. `message` is
 
 ### Function to paste
 
-Create a function named `getRacePackage`. Paste this, then replace `loadRacePackage`. Until you do, a real event id returns 404, which is safer than returning an empty package the laptop would reject anyway.
+Create a function named `getRacePackage` and paste this over the one on the site. It reads `Event`, `Race`, `ScoringRoster`, `EventRegistration`, and `Rider`. It does not copy email, phone, birth date, address, or emergency contact.
 
-`Event`, `Check`, `Race`, `SeriesRider`, and `Registration` below are placeholders. Rename them to your entities. `filter({ id: eventId })` returns an array. Copy field names from the sample JSON. Do not copy email, phone, address, or emergency contact into the object you return.
+Unpaid riders are included. Rider numbers are whole numbers only. `?report=1` adds a `report` object for a director checking the download in a browser. The laptop must not send that. The extra key is rejected.
+
+Race length is read only in `readRaceLength`, from the Edit Race fields:
+
+| Site field       | Meaning                                                                                                                                              |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `length_type`    | `"time"` or `"laps"`.                                                                                                                                |
+| `length_laps`    | Lap count. `0` or blank means laps are not set. On a lap race, that runs until the finish and does not create a time limit.                          |
+| `length_minutes` | Time limit in minutes, counted from each row's own start. Example: Test Race 1 is `length_type` `"time"`, `length_laps` `0`, `length_minutes` `120`. |
+
+`classes[].rows` is how many race-wide rows that class uses (Pro row 1, A rows 2-4). `row_gap_seconds` is the gap. `start_at` is when row 1 leaves. Row N leaves at that time plus the gap times (N - 1). `ScoringRoster.start_row` is that race-wide row number.
+
+If `length_type` is empty, a positive `length_minutes` is sent as a time race and a positive `length_laps` is sent as a lap race. A race with neither is sent as laps until the finish, with a warning, and is not given a 180 minute limit. Both values with no type stops the download until `length_type` is set.
 
 ```javascript
 import { createClientFromRequest } from "npm:@base44/sdk";
 
+// ---------------------------------------------------------------------------
+// getRacePackage: builds the race download for the MWHE laptop.
+// Reads these entities (read only): Event, Race, ScoringRoster,
+// EventRegistration, Rider. It never copies email, phone, birth date,
+// address or emergency contact into the response.
+// Race length comes from length_type, length_laps, and length_minutes.
+// A class may start on several rows (Race.classes[].rows). Row numbers
+// run across the race. Row N leaves at start_at plus row_gap_seconds
+// times (N - 1). ScoringRoster.start_row is that row number.
+// ---------------------------------------------------------------------------
+
 const HUB_ROLES = new Set(["race_director", "admin"]);
+
+// Official class list, in the order the laptop requires.
+const RIDER_CLASSES = [
+  "Pro",
+  "A",
+  "B",
+  "C",
+  "+40A",
+  "+40B",
+  "+40C",
+  "Womens",
+  "Womens Pro",
+  "Electric Sportsman",
+  "Electric Pro",
+  "65/85",
+  "50cc",
+];
+
+// Race length is read in readRaceLength. The Edit Race form uses
+// length_type, length_laps, and length_minutes. A lap race with no lap
+// count runs until the finish and is not given a time limit.
+const MAX_CLASS_ROWS = 30;
+
+// true  = riders marked unpaid are still sent (the laptop has no paid flag).
+// false = unpaid riders are left out of the download.
+const INCLUDE_UNPAID = true;
 
 export default async function (req) {
   if (req.method === "OPTIONS") {
@@ -259,7 +313,7 @@ export default async function (req) {
     return fail(405, "method_not_allowed", "Use GET");
   }
 
-  let user;
+  let user = null;
   try {
     const base44 = createClientFromRequest(req);
     user = await base44.auth.me();
@@ -275,20 +329,45 @@ export default async function (req) {
     const eventId = await readEventId(req);
     if (!eventId) return fail(400, "missing_event_id", "eventId is required");
 
-    // Role is already checked. asServiceRole is only so entity rules cannot
-    // hide a series rider from this download.
-    const racePackage = await loadRacePackage(base44, eventId);
-    if (!racePackage) {
-      return fail(404, "event_not_found", "No event with id " + eventId);
+    // Role is checked above. Service role is only so entity rules cannot hide
+    // the series list or the roster from this download.
+    const db = base44.asServiceRole.entities;
+
+    const event = await findEvent(db, eventId);
+    if (!event) return fail(404, "event_not_found", "No event with id " + eventId);
+
+    const [races, roster, registrations, riders] = await Promise.all([
+      fetchAll(db.Race, { event_id: eventId }),
+      fetchAll(db.ScoringRoster, { event_id: eventId }),
+      fetchAll(db.EventRegistration, { event_id: eventId }),
+      fetchAll(db.Rider, null),
+    ]);
+
+    const built = buildRacePackage({ event, races, roster, registrations, riders });
+    if (built.problem) return fail(409, "event_not_ready", built.problem);
+
+    const wantReport = new URL(req.url).searchParams.get("report") === "1";
+    if (wantReport) {
+      // For a director checking the download from a browser or PowerShell.
+      // The laptop never asks for this. It holds counts and rider numbers only.
+      return Response.json(
+        { ok: true, racePackage: built.racePackage, report: built.report },
+        { status: 200, headers: cors() },
+      );
     }
-    return Response.json({ ok: true, racePackage }, { status: 200, headers: cors() });
+    return Response.json(
+      { ok: true, racePackage: built.racePackage },
+      { status: 200, headers: cors() },
+    );
   } catch (error) {
-    // Do not log req.headers.get("Authorization").
+    // Never log the Authorization header or rider data.
     console.error("getRacePackage failed");
     if (!user) return fail(401, "unauthorized", "Sign in as a race director or admin");
     return fail(500, "server_error", "The race package could not be built");
   }
 }
+
+// ----------------------------- loading -------------------------------------
 
 async function readEventId(req) {
   const url = new URL(req.url);
@@ -299,19 +378,509 @@ async function readEventId(req) {
   return String(body.eventId || "").trim();
 }
 
-async function loadRacePackage(base44, eventId) {
-  // Replace this body. A pasted copy returns null, and the function
-  // answers 404, until the mapping is filled in.
-  //
-  // const events = await base44.asServiceRole.entities.Event.filter({ id: eventId });
-  // const event = events[0];
-  // if (!event) return null;
-  //
-  // Return one object shaped like docs/examples/getRacePackage.response.json
-  // under the racePackage key. schemaVersion is 1.
-  void base44;
-  void eventId;
-  return null;
+async function findEvent(db, eventId) {
+  try {
+    const found = await db.Event.filter({ id: eventId });
+    return Array.isArray(found) && found.length > 0 ? found[0] : null;
+  } catch (error) {
+    // A made-up id that is not even shaped like a record id may make the
+    // lookup throw. That is "not found", not a server fault.
+    if (!/^[0-9a-f]{24}$/i.test(eventId)) return null;
+    throw error;
+  }
+}
+
+// Base44 returns a limited page by default, so ask for pages until done.
+async function fetchAll(entity, query) {
+  const pageSize = 500;
+  const out = [];
+  for (let page = 0; page < 20; page += 1) {
+    const rows = query
+      ? await entity.filter(query, "created_date", pageSize, page * pageSize)
+      : await entity.list("created_date", pageSize, page * pageSize);
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    out.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return out;
+}
+
+// ----------------------------- mapping -------------------------------------
+
+function buildRacePackage({ event, races, roster, registrations, riders }) {
+  const warnings = [];
+  const warn = (text) => warnings.push(text);
+
+  // ---- event
+  const date = String(event.date || "")
+    .trim()
+    .slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { problem: "This event has no date. Set a date on the event first." };
+  }
+  const eventName = clean(event.name);
+  if (!eventName) return { problem: "This event has no name." };
+
+  // ---- races (lowest site order becomes the primary race)
+  const sortedRaces = [...races].sort(
+    (a, b) =>
+      numberOr(a.order, 9999) - numberOr(b.order, 9999) ||
+      String(a.created_date || "").localeCompare(String(b.created_date || "")),
+  );
+  const packageRaces = [];
+  for (const race of sortedRaces) {
+    const label = clean(race.name) || "(unnamed race)";
+    const seenChecks = new Set();
+    const checks = [];
+    for (const point of Array.isArray(race.checkpoints) ? race.checkpoints : []) {
+      const id = clean(point && point.id);
+      if (!id || seenChecks.has(id)) continue;
+      seenChecks.add(id);
+      checks.push({
+        id,
+        order: checks.length + 1,
+        name: clean(point.name) || "Checkpoint " + (checks.length + 1),
+      });
+    }
+    if (checks.length === 0) {
+      warn("Race '" + label + "' has no checkpoints and was left out.");
+      continue;
+    }
+
+    const lengthResult = readRaceLength(race, label, warn);
+    if (lengthResult.problem) return { problem: lengthResult.problem };
+
+    // classes[].rows is how many race-wide rows that class uses. Pro with
+    // 1 row then A with 3 rows becomes row 1 Pro, rows 2-4 A.
+    const rows = [];
+    const seenClasses = new Set();
+    for (const entry of Array.isArray(race.classes) ? race.classes : []) {
+      const riderClass = canonicalClass(entry && entry.rider_class);
+      if (!riderClass) {
+        warn("Race '" + label + "' lists an unknown class and it was skipped.");
+        continue;
+      }
+      if (seenClasses.has(riderClass)) continue;
+      seenClasses.add(riderClass);
+      const count = classRowCount(entry && entry.rows, label, riderClass, warn);
+      for (let i = 0; i < count; i += 1) rows.push({ riderClass });
+    }
+    const startRows = rows.length
+      ? rows.map((row, index) => ({
+          id: race.id + ":row-" + (index + 1),
+          order: index + 1,
+          label: row.riderClass,
+          classes: [row.riderClass],
+        }))
+      : [
+          {
+            id: race.id + ":row-1",
+            order: 1,
+            label: "Row 1",
+            classes: [...RIDER_CLASSES],
+          },
+        ];
+    if (!rows.length)
+      warn("Race '" + label + "' has no classes, so every class is on one row.");
+
+    packageRaces.push({
+      id: String(race.id),
+      name: clean(race.name) || "Race " + (packageRaces.length + 1),
+      order: packageRaces.length + 1,
+      length: lengthResult.length,
+      rowGapSeconds: readRowGap(race, label, warn),
+      plannedStart: readPlannedStart(race, label, warn),
+      checks,
+      startRows,
+    });
+  }
+  if (packageRaces.length === 0) {
+    return {
+      problem:
+        "This event has no race with checkpoints yet. Add a race and its checkpoints on the site first.",
+    };
+  }
+  const primary = packageRaces[0];
+
+  // ---- series riders (Rider table)
+  const seriesRiders = [];
+  const seriesByNumber = new Map();
+  const ranked = [...riders].sort(
+    (a, b) =>
+      numberOr(b.series_year, 0) - numberOr(a.series_year, 0) ||
+      String(a.created_date || "").localeCompare(String(b.created_date || "")),
+  );
+  for (const rider of ranked) {
+    const status = String(rider.registration_status || "").toLowerCase();
+    if (status === "inactive" || status === "cancelled" || status === "canceled")
+      continue;
+    const number = riderNumber(rider.bike_number);
+    const riderClass = canonicalClass(rider.rider_class);
+    const name = fullName(rider.first_name, rider.last_name);
+    if (!number || !riderClass || !name) {
+      warn(
+        "Series rider " +
+          (clean(rider.bike_number) || "?") +
+          " (" +
+          (name || "no name") +
+          ") has a number or class the laptop cannot use and was left out.",
+      );
+      continue;
+    }
+    if (seriesByNumber.has(number)) {
+      warn(
+        "Series number " +
+          number +
+          " belongs to more than one rider. Only the first is sent.",
+      );
+      continue;
+    }
+    const entry = { seriesId: String(rider.id), name, number, class: riderClass };
+    seriesRiders.push(entry);
+    seriesByNumber.set(number, entry);
+  }
+  const seriesById = new Map(seriesRiders.map((r) => [r.seriesId, r]));
+
+  // ---- registrations: race-day roster first, then online pre-entries
+  const out = [];
+  const usedNumbers = new Set();
+  let unpaidCount = 0;
+
+  function addRegistration({
+    number,
+    name,
+    riderClass,
+    riderId,
+    source,
+    unpaid,
+    startRow,
+  }) {
+    if (!number) {
+      warn(
+        source +
+          " '" +
+          name +
+          "' has a rider number the laptop cannot use (needs a whole number above 0) and was left out.",
+      );
+      return;
+    }
+    if (!riderClass) {
+      warn(
+        source + " #" + number + " '" + name + "' has no valid class and was left out.",
+      );
+      return;
+    }
+    if (!name) {
+      warn(source + " #" + number + " has no name and was left out.");
+      return;
+    }
+    if (unpaid && !INCLUDE_UNPAID) return;
+    if (usedNumbers.has(number)) {
+      if (source === "Roster")
+        warn("Roster number " + number + " is used twice. Only the first is sent.");
+      return;
+    }
+    const owner = seriesByNumber.get(number);
+    let seriesId = null;
+    if (owner) {
+      const sameRider = riderId ? owner.seriesId === riderId : sameName(owner.name, name);
+      if (!sameRider) {
+        warn(
+          source +
+            " #" +
+            number +
+            " '" +
+            name +
+            "' uses a number that belongs to series rider '" +
+            owner.name +
+            "'. It was left out. Fix the number on the site.",
+        );
+        return;
+      }
+      seriesId = owner.seriesId;
+    }
+    usedNumbers.add(number);
+    if (unpaid) unpaidCount += 1;
+    out.push({
+      riderNumber: number,
+      name,
+      class: riderClass,
+      seriesId,
+      startRow: assignedStartRow(startRow, source, number, warn),
+    });
+  }
+
+  for (const row of roster) {
+    addRegistration({
+      number: riderNumber(row.number),
+      name: fullName(row.first_name, row.last_name),
+      riderClass: canonicalClass(row.rider_class),
+      riderId: null,
+      source: "Roster",
+      unpaid: row.paid === false || /^unpaid$/i.test(String(row.payment || "")),
+      startRow: row.start_row,
+    });
+  }
+  const rosterCount = out.length;
+
+  for (const reg of registrations) {
+    if (/cancel|refund/i.test(String(reg.payment_status || ""))) continue;
+    const profile = seriesById.get(String(reg.rider_id || ""));
+    const number = riderNumber(reg.bike_number) || (profile ? profile.number : null);
+    if (usedNumbers.has(number)) continue;
+    // Same person already on the roster under another number: skip.
+    if (profile && out.some((r) => r.seriesId === profile.seriesId)) continue;
+    addRegistration({
+      number,
+      name: clean(reg.rider_name) || (profile ? profile.name : ""),
+      riderClass: canonicalClass(reg.rider_class),
+      riderId: reg.rider_id ? String(reg.rider_id) : null,
+      source: "Pre-entry",
+      unpaid: !/^paid$/i.test(String(reg.payment_status || "")),
+      startRow: null,
+    });
+  }
+
+  for (const reg of out) {
+    if (reg.startRow == null) continue;
+    const row = primary.startRows.find((item) => item.order === reg.startRow);
+    if (!row || row.classes.indexOf(reg.class) === -1) {
+      warn(
+        "#" +
+          reg.riderNumber +
+          " is assigned to row " +
+          reg.startRow +
+          ", which is not a " +
+          reg.class +
+          " row on " +
+          primary.name +
+          ". The laptop will place them by number on that race.",
+      );
+    }
+  }
+
+  const racePackage = {
+    schemaVersion: 1,
+    event: {
+      id: String(event.id),
+      name: eventName,
+      date,
+      length: primary.length,
+      checks: primary.checks.map((c) => ({ ...c })),
+    },
+    races: packageRaces,
+    classes: [...RIDER_CLASSES],
+    riders: seriesRiders,
+    registrations: out,
+  };
+
+  return {
+    racePackage,
+    report: {
+      eventId: String(event.id),
+      races: packageRaces.length,
+      seriesRiders: seriesRiders.length,
+      registrations: out.length,
+      fromRoster: rosterCount,
+      fromPreEntry: out.length - rosterCount,
+      unpaidIncluded: INCLUDE_UNPAID ? unpaidCount : 0,
+      warnings,
+    },
+  };
+}
+
+// ----------------------------- helpers -------------------------------------
+
+// ---------------------------------------------------------------------------
+// Race length. Confirmed Edit Race field names. Change only this function
+// if the site renames them.
+//   length_type     "time" or "laps"
+//   length_laps     number; 0 or blank means laps are not set
+//   length_minutes  minutes, counted from each row's own start
+// Example: length_type "time", length_laps 0, length_minutes 120.
+// A lap race never receives a default time limit. Blank laps means the
+// race runs until the finish.
+// ---------------------------------------------------------------------------
+function readRaceLength(race, label, warn) {
+  const type = clean(race.length_type).toLowerCase();
+  const minutes = positiveInt(race.length_minutes);
+  const laps = readOptionalCount(race.length_laps);
+
+  if (type === "time") {
+    if (!minutes) {
+      return {
+        problem:
+          "Race '" +
+          label +
+          "' is a time race but length_minutes is missing or not a whole number above 0.",
+      };
+    }
+    return { length: { mode: "time", minutes: minutes } };
+  }
+  if (type === "laps") {
+    if (laps.bad) {
+      return { problem: "Race '" + label + "' has a lap count the laptop cannot use." };
+    }
+    return { length: { mode: "laps", laps: laps.value } };
+  }
+  if (type) {
+    return {
+      problem:
+        "Race '" + label + "' has length_type '" + type + "', which is not time or laps.",
+    };
+  }
+  // length_type not filled in. Do not invent a 180 minute limit.
+  if (laps.bad) {
+    return { problem: "Race '" + label + "' has a lap count the laptop cannot use." };
+  }
+  if (minutes && laps.value) {
+    return {
+      problem:
+        "Race '" +
+        label +
+        "' has both length_minutes and length_laps but no length_type. Set length_type to time or laps.",
+    };
+  }
+  if (minutes) return { length: { mode: "time", minutes: minutes } };
+  if (laps.value) return { length: { mode: "laps", laps: laps.value } };
+  warn(
+    "Race '" +
+      label +
+      "' has no length_type. It is sent as laps until the finish, with no time limit.",
+  );
+  return { length: { mode: "laps", laps: null } };
+}
+
+function readOptionalCount(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    clean(value) === "" ||
+    value === 0 ||
+    value === "0"
+  ) {
+    return { bad: false, value: null };
+  }
+  const n = positiveInt(value);
+  if (!n) return { bad: true, value: null };
+  return { bad: false, value: n };
+}
+
+function classRowCount(value, label, riderClass, warn) {
+  if (value === null || value === undefined || clean(value) === "") return 1;
+  const count = positiveInt(value);
+  if (!count) {
+    warn(
+      "Race '" +
+        label +
+        "': " +
+        riderClass +
+        " has a row count the laptop cannot use. One row was sent.",
+    );
+    return 1;
+  }
+  if (count > MAX_CLASS_ROWS) {
+    warn(
+      "Race '" +
+        label +
+        "': " +
+        riderClass +
+        " asked for " +
+        count +
+        " rows. " +
+        MAX_CLASS_ROWS +
+        " were sent.",
+    );
+    return MAX_CLASS_ROWS;
+  }
+  return count;
+}
+
+function readRowGap(race, label, warn) {
+  const value = race.row_gap_seconds;
+  if (value === null || value === undefined || clean(value) === "") return 0;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) {
+    warn("Race '" + label + "' has a row gap the laptop cannot use. No gap was sent.");
+    return 0;
+  }
+  return n;
+}
+
+function readPlannedStart(race, label, warn) {
+  let text = clean(race.start_at);
+  if (!text) return null;
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(text)) {
+    text = text.replace(" ", "T") + "Z";
+  }
+  const ms = Date.parse(text);
+  if (!Number.isFinite(ms)) {
+    warn(
+      "Race '" +
+        label +
+        "' has a start time the laptop cannot read. No planned start was sent.",
+    );
+    return null;
+  }
+  return new Date(ms).toISOString();
+}
+
+function assignedStartRow(value, source, number, warn) {
+  if (value === null || value === undefined || clean(value) === "") return null;
+  const n = positiveInt(value);
+  if (!n) {
+    warn(
+      source +
+        " #" +
+        number +
+        " has a start row the laptop cannot use. They will be placed by number.",
+    );
+    return null;
+  }
+  return n;
+}
+
+function clean(value) {
+  return String(value == null ? "" : value)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fullName(first, last) {
+  return clean(clean(first) + " " + clean(last));
+}
+
+function sameName(a, b) {
+  const x = clean(a).toLowerCase();
+  const y = clean(b).toLowerCase();
+  if (x === y) return true;
+  const xs = x.split(" ");
+  const ys = y.split(" ");
+  return xs[xs.length - 1] === ys[ys.length - 1] && xs[0][0] === ys[0][0];
+}
+
+function riderNumber(value) {
+  const text = clean(value);
+  if (!/^\d{1,6}$/.test(text)) return null;
+  const n = Number(text);
+  return n > 0 ? n : null;
+}
+
+function canonicalClass(value) {
+  const text = clean(value).toLowerCase();
+  return RIDER_CLASSES.find((c) => c.toLowerCase() === text) || null;
+}
+
+function numberOr(value, fallback) {
+  const n = Number(value);
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(n)
+    ? n
+    : fallback;
+}
+
+function positiveInt(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 function fail(status, error, message) {
@@ -328,7 +897,7 @@ function cors() {
 }
 ```
 
-After `loadRacePackage` returns a real package, download `gnaw-bone-2026` (or whatever the event id is) from the laptop while signed in as a director, then try again as a rider. The rider must get "This account is not a race director or admin" and the laptop must not keep that download.
+After pasting, download an event from the laptop while signed in as a director, then try again as a rider. The rider must get "This account is not a race director or admin" and the laptop must not keep that download.
 
 ## Login errors the laptop already understands
 

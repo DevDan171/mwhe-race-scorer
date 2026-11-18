@@ -8,7 +8,7 @@ Implemented by `scoreRace` in `packages/core`. The demo fixture in `createDemoRa
 2. Ignore voided punches.
 3. Ignore a punch whose timestamp is before that rider's start. Warning: `punch_before_start`.
 4. Ignore a punch whose `checkId` is not on the course. Warning: `unknown_check`.
-5. A punch at or before `start + timeLimitMinutes` counts. A punch after that is over-limit: it is shown on the row and it does not count as a check or toward total time.
+5. On a timed race, a punch at or before `start + minutes` counts. A punch after that is over-limit: it is shown on the row and it does not count as a check or toward total time. The minutes are counted from that rider's own start. A lap race has no time limit, so a punch is not over-limit for the clock. A blank lap count means the race runs until the finish.
 6. The boundary is inclusive. A punch at the exact limit counts.
 
 Checks are the distinct in-limit `checkId`s. A second punch at the same check does not add a check.
@@ -29,9 +29,25 @@ A penalty whose check is not on the course still adds to the total, with warning
 
 If the rider has no scored punch, `elapsedSeconds` and `totalTimeSeconds` stay null. Penalties are listed and do not invent a time.
 
+## Start rows
+
+Row numbers run across the whole race. Pro can be row 1, class A rows 2 through 4, and +40A row 5. A class may be on more than one of those rows.
+
+Row 1 leaves at the race's planned start. Row N leaves `(N - 1) * rowGapSeconds` later. The row number is used as written, so a missing number still leaves the gap. An empty row still holds its number. No planned start means the rows have no clock.
+
+A registration may name a `startRow`. That number is used when it is one of the rows for the rider's class. When it is missing, or it names a row that class is not on, the laptop places the rider by number:
+
+1. Sort the unassigned riders in the class by rider number.
+2. Split them into contiguous blocks, one block per row of that class, as evenly as possible.
+3. Earlier rows get the extra rider when the count does not divide evenly. The lowest numbers go on the earliest row.
+4. Riders who were assigned a row stay there. They are not part of the split, so one assignment does not reshuffle everyone else.
+5. Inside a row, riders line up by number.
+
+A start time entered on the laptop replaces that rider's row clock, and the time limit is then counted from the entered start.
+
 ## No start time
 
-The time limit and the elapsed time are both measured from the rider's start. Punches with no start are not scored. Warning: `missing_start_time`. The laptop has to enter a start before those punches count. Penalty seconds are recorded on the row and are not added into a total.
+The time limit and the elapsed time are both measured from the rider's start. Punches with no start are not scored. Warning: `missing_start_time`. That happens when the race has no planned start and nobody entered a start for the rider. Penalty seconds are recorded on the row and are not added into a total.
 
 ## Status
 
@@ -97,3 +113,6 @@ These are encoded so the tests have one answer. Change them in `packages/core` i
 10. Penalties do not create a time for a rider with no scored punch, and they do not apply until a start exists.
 11. Any voided copy of a uuid drops that punch.
 12. The series-points fallback when neither rider has a finish at the latest event is still open. The walk-back is a placeholder.
+13. A timed race counts its limit from each rider's own start, which is their row's clock unless a start was entered by hand.
+14. A lap race has no time limit. A blank lap count means the race runs until the finish. Scoring still counts distinct checks. It does not yet require a set number of laps.
+15. Riders with no assigned start row are split by number across that class's rows, lowest numbers on the earliest row.
