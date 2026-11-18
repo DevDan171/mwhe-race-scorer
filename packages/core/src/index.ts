@@ -103,14 +103,36 @@ export {
 export { RegistrationError, type RegistrationErrorCode } from "./registration/errors.js";
 
 export {
+  assertHubAccess,
   getRacePackage,
   getRacePackageResponseSchema,
+  getSignedInUser,
+  HUB_ROLES,
+  isHubRole,
+  signInWithPassword,
+  siteAccountSchema,
   siteErrorSchema,
   SiteApiError,
   type GetRacePackageOptions,
   type GetRacePackageResponse,
+  type GetSignedInUserOptions,
+  type HubRole,
+  type SignedInSession,
+  type SignInOptions,
+  type SiteAccount,
   type SiteErrorBody,
 } from "./site/client.js";
+export {
+  authOriginFor,
+  BASE44_AUTH_ORIGIN,
+  MOCK_ACCOUNTS,
+  MOCK_ADMIN,
+  MOCK_APP_ID,
+  MOCK_DIRECTOR,
+  MOCK_RIDER,
+  MOCK_SITE_ORIGIN,
+  type MockAccount,
+} from "./site/mock-accounts.js";
 export {
   createSampleRacePackage,
   SAMPLE_EVENT_ID,

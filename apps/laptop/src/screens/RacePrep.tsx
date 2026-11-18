@@ -1,16 +1,30 @@
-import { packageCounts } from "@mwhe/core";
+import {
+  MOCK_APP_ID,
+  MOCK_DIRECTOR,
+  MOCK_RIDER,
+  MOCK_SITE_ORIGIN,
+  packageCounts,
+  SAMPLE_EVENT_ID,
+} from "@mwhe/core";
 import { useState } from "react";
 
+import { LIVE_SITE_ORIGIN } from "../db/store";
 import { useHub } from "../use-hub";
 import { messageOf } from "../message";
 import { Banner, Field } from "../ui";
 
+const dev = import.meta.env.DEV;
+
 export function RacePrep() {
   const hub = useHub();
   const [name, setName] = useState(hub.operatorName ?? "");
-  const [baseUrl, setBaseUrl] = useState(hub.baseUrl);
-  const [token, setToken] = useState("");
-  const [eventId, setEventId] = useState("");
+  const [baseUrl, setBaseUrl] = useState(
+    dev && hub.baseUrl === LIVE_SITE_ORIGIN ? MOCK_SITE_ORIGIN : hub.baseUrl,
+  );
+  const [appId, setAppId] = useState(hub.appId || (dev ? MOCK_APP_ID : ""));
+  const [email, setEmail] = useState(hub.account?.email ?? "");
+  const [password, setPassword] = useState("");
+  const [eventId, setEventId] = useState(dev ? SAMPLE_EVENT_ID : "");
   const [replace, setReplace] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -20,7 +34,6 @@ export function RacePrep() {
     setBusy(true);
     try {
       await action();
-      setToken("");
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
@@ -28,8 +41,18 @@ export function RacePrep() {
     }
   }
 
+  function fillMock() {
+    setBaseUrl(MOCK_SITE_ORIGIN);
+    setAppId(MOCK_APP_ID);
+    setEmail(MOCK_DIRECTOR.email);
+    setPassword(MOCK_DIRECTOR.password);
+    setEventId(SAMPLE_EVENT_ID);
+    if (!name.trim()) setName(MOCK_DIRECTOR.name);
+  }
+
   const downloaded = hub.state ? packageCounts(hub.state.snapshot) : null;
   const current = hub.state ? packageCounts(hub.state.race) : null;
+  const updatingName = hub.hasToken && password.length === 0;
 
   return (
     <div className="stack">
@@ -47,10 +70,22 @@ export function RacePrep() {
       <section className="panel">
         <h2>Sign in</h2>
         <p className="hint">
+          Use the email and password for your MidwestHardEnduro.com account.{" "}
           {hub.credentialStore === "windows"
-            ? "The token is stored in Windows Credential Manager, not in a file."
-            : "This browser preview keeps the token in memory until you close the tab. The Windows app uses Credential Manager."}
+            ? "The sign-in is stored in Windows Credential Manager, not in a file."
+            : "This browser preview keeps the sign-in in memory until you close the tab. The Windows app uses Credential Manager."}
         </p>
+        {hub.account ? (
+          <Banner tone="ok">
+            Signed in as {hub.account.name} ({hub.account.email}),{" "}
+            {roleLabel(hub.account.role)}.
+          </Banner>
+        ) : hub.hasToken ? (
+          <Banner tone="info">
+            A sign-in is saved, but this laptop does not know which account it is. Sign in
+            again.
+          </Banner>
+        ) : null}
         <div className="form-grid">
           <Field label="Your name" hint="Written on every changelog entry.">
             <input
@@ -59,7 +94,31 @@ export function RacePrep() {
               autoComplete="name"
             />
           </Field>
-          <Field label="Site address">
+          <Field label="Email">
+            <input
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              autoComplete="username"
+              spellCheck={false}
+            />
+          </Field>
+          <Field
+            label="Password"
+            hint={
+              hub.hasToken
+                ? "Leave this blank to update your name only."
+                : "The password for your MidwestHardEnduro.com account."
+            }
+          >
+            <input
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              type="password"
+              autoComplete="current-password"
+            />
+          </Field>
+          <Field label="Site address" hint={`Downloads use ${hub.baseUrl}.`}>
             <input
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
@@ -68,17 +127,12 @@ export function RacePrep() {
             />
           </Field>
           <Field
-            label="Bearer token"
-            hint={
-              hub.hasToken
-                ? "A token is saved. Paste a new one only to replace it."
-                : "Paste the token from your race director or admin sign-in. There is no shared key."
-            }
+            label="App id"
+            hint="From the Base44 editor URL, between /apps/ and /editor/. Dan sets this once. It is not a password."
           >
             <input
-              type="password"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
+              value={appId}
+              onChange={(event) => setAppId(event.target.value)}
               autoComplete="off"
               spellCheck={false}
             />
@@ -90,10 +144,23 @@ export function RacePrep() {
             className="primary"
             disabled={busy}
             onClick={() =>
-              void run(() => hub.signIn({ operatorName: name, baseUrl, token }))
+              void run(async () => {
+                if (updatingName) {
+                  await hub.saveName(name);
+                  return;
+                }
+                await hub.signIn({
+                  operatorName: name,
+                  baseUrl,
+                  appId,
+                  email,
+                  password,
+                });
+                setPassword("");
+              })
             }
           >
-            Save sign-in
+            {updatingName ? "Save name" : "Sign in"}
           </button>
           <button
             type="button"
@@ -104,10 +171,6 @@ export function RacePrep() {
             Sign out
           </button>
         </div>
-        <p className="hint">
-          Base44 has not documented a device-code exchange. Token paste is the sign-in
-          path until that exists.
-        </p>
       </section>
 
       <section className="panel">
@@ -148,13 +211,20 @@ export function RacePrep() {
         >
           Download race package
         </button>
-        <details className="dev-note">
+        <p className="offline">
+          After the download, registration keeps working with the Wi-Fi off.
+        </p>
+        <details className="dev-note" open={dev}>
           <summary>Try this without the live site</summary>
           <p>
-            Run <code>pnpm mock:site</code>, set the site address to{" "}
-            <code>http://127.0.0.1:8787</code>, paste any token other than{" "}
-            <code>forbidden</code>, and download <code>gnaw-bone-2026</code>.
+            Run <code>pnpm mock:site</code>, then fill in the local test account. Sign in
+            as <code>{MOCK_DIRECTOR.email}</code> / <code>{MOCK_DIRECTOR.password}</code>{" "}
+            (race director). <code>{MOCK_RIDER.email}</code> uses the same password and is
+            rejected. Download <code>{SAMPLE_EVENT_ID}</code>.
           </p>
+          <button type="button" className="ghost" disabled={busy} onClick={fillMock}>
+            Fill in the mock site
+          </button>
         </details>
       </section>
 
@@ -179,6 +249,12 @@ export function RacePrep() {
       ) : null}
     </div>
   );
+}
+
+function roleLabel(role: string): string {
+  if (role === "race_director") return "race director";
+  if (role === "admin") return "admin";
+  return role;
 }
 
 function Count({ label, value }: { label: string; value: number }) {

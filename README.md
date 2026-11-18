@@ -17,6 +17,18 @@ Phase 1 is the laptop hub: download a race package, then register riders offline
 
 Node 22 and pnpm 10.
 
+On Windows, if `corepack enable` fails with `EPERM`, install pnpm itself:
+
+```bash
+npm install -g pnpm
+```
+
+If PowerShell refuses to run scripts, allow them for your user and open a new terminal:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
 ```bash
 pnpm install
 pnpm lint
@@ -30,10 +42,12 @@ pnpm build
 ```bash
 pnpm dev:laptop    # http://localhost:1420
 pnpm dev:station   # http://localhost:1421
-pnpm mock:site     # http://127.0.0.1:8787  GET /functions/getRacePackage
+pnpm mock:site     # http://127.0.0.1:8787
 ```
 
-The laptop talks to MidwestHardEnduro.com when that function exists. Until then, point Race Prep at the mock site, paste any bearer token other than `forbidden`, and download event `gnaw-bone-2026`. The token is not a shared key. In the browser preview it stays in memory. The Windows app stores it in Credential Manager.
+The laptop signs in with a MidwestHardEnduro.com email and password. It does not ask anyone to paste a token. The Windows app stores that person's token in Credential Manager. The browser preview keeps it in memory for the tab.
+
+Until `getRacePackage` exists on the live site, use the mock. `pnpm dev:laptop` starts Race Prep on `http://127.0.0.1:8787`. Run `pnpm mock:site`, choose **Fill in the mock site**, and sign in as `rd@example.com` / `race-day-local`. That account is a race director. `rider@example.com` with the same password is rejected. Download event `gnaw-bone-2026`. The password is only for this mock. It is not a MidwestHardEnduro.com password.
 
 The station app still renders the Timber Ridge demo roster. That fixture is not a real result.
 
@@ -47,6 +61,6 @@ The station app still renders the Timber Ridge demo roster. That fixture is not 
 
 ## Phase 1 status
 
-Done: race package download against a mock site, SQLite race prep, offline registration with series-wide number checks, roster versions and deltas, and a changelog.
+Done: email sign-in against a mock site, race package download, SQLite race prep, offline registration with series-wide number checks, roster versions and deltas, and a changelog.
 
-Not done, and called out in [docs/release.md](docs/release.md): the Windows installer and the Android APK. CI typechecks and builds the web bundles. It does not compile the Tauri shell. Base44 still has to implement `getRacePackage` from [docs/site-api.md](docs/site-api.md).
+Not done, and called out in [docs/release.md](docs/release.md): the Windows installer and the Android APK. CI typechecks and builds the web bundles. It does not compile the Tauri shell. Base44 still has to implement `getRacePackage` from [docs/site-api.md](docs/site-api.md). The live site sign-in has not been tried against MidwestHardEnduro.com yet. The mock covers the same calls.

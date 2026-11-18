@@ -1,13 +1,27 @@
-import { raceDayStateSchema, type ChangelogEntry, type RaceDayState } from "@mwhe/core";
+import {
+  MOCK_SITE_ORIGIN,
+  raceDayStateSchema,
+  siteAccountSchema,
+  type ChangelogEntry,
+  type RaceDayState,
+  type SiteAccount,
+} from "@mwhe/core";
 
 import { migrate } from "./migrate.js";
 import type { SqlExecutor } from "./sql.js";
 
-export const DEFAULT_SITE_ORIGIN = "https://midwesthardenduro.com";
+export const LIVE_SITE_ORIGIN = "https://midwesthardenduro.com";
+
+/** Dev builds start on the mock site. A packaged build starts on the live site. */
+export function defaultSiteOrigin(dev = import.meta.env.DEV): string {
+  return dev ? MOCK_SITE_ORIGIN : LIVE_SITE_ORIGIN;
+}
 
 export interface HubRecord {
   operatorName: string | null;
   baseUrl: string;
+  appId: string;
+  account: SiteAccount | null;
   state: RaceDayState | null;
 }
 
@@ -26,17 +40,25 @@ export function createHubStore(db: SqlExecutor): HubStore {
     async load() {
       await migrate(db);
       const rows = await db.all(
-        "SELECT operator_name, base_url, state_json FROM hub WHERE id = 1",
+        "SELECT operator_name, base_url, app_id, session_json, state_json FROM hub WHERE id = 1",
       );
       const row = rows[0];
       if (!row) {
-        return { operatorName: null, baseUrl: DEFAULT_SITE_ORIGIN, state: null };
+        return {
+          operatorName: null,
+          baseUrl: defaultSiteOrigin(),
+          appId: "",
+          account: null,
+          state: null,
+        };
       }
       const state = parseState(row.state_json);
       if (state) await repairChangelog(db, state);
       return {
         operatorName: textOrNull(row.operator_name),
-        baseUrl: textOrNull(row.base_url) ?? DEFAULT_SITE_ORIGIN,
+        baseUrl: textOrNull(row.base_url) ?? defaultSiteOrigin(),
+        appId: textOrNull(row.app_id) ?? "",
+        account: parseAccount(row.session_json),
         state,
       };
     },
@@ -44,15 +66,25 @@ export function createHubStore(db: SqlExecutor): HubStore {
       await migrate(db);
       const state = record.state ? raceDayStateSchema.parse(record.state) : null;
       const operatorName = record.operatorName?.trim() || null;
+      const appId = record.appId.trim() || null;
+      const account = record.account ? siteAccountSchema.parse(record.account) : null;
       await db.transaction(async () => {
         await db.run(
-          `INSERT INTO hub (id, operator_name, base_url, state_json)
-           VALUES (1, ?, ?, ?)
+          `INSERT INTO hub (id, operator_name, base_url, app_id, session_json, state_json)
+           VALUES (1, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              operator_name = excluded.operator_name,
              base_url = excluded.base_url,
+             app_id = excluded.app_id,
+             session_json = excluded.session_json,
              state_json = excluded.state_json`,
-          [operatorName, record.baseUrl, state ? JSON.stringify(state) : null],
+          [
+            operatorName,
+            record.baseUrl,
+            appId,
+            account ? JSON.stringify(account) : null,
+            state ? JSON.stringify(state) : null,
+          ],
         );
         await replaceChangelog(db, state);
       });
@@ -67,6 +99,16 @@ function parseState(value: unknown): RaceDayState | null {
 
 function textOrNull(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function parseAccount(value: unknown): SiteAccount | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  try {
+    const parsed = siteAccountSchema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }
 
 async function repairChangelog(db: SqlExecutor, state: RaceDayState): Promise<void> {
