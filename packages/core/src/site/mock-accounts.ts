@@ -45,10 +45,24 @@ export const MOCK_RIDER: MockAccount = {
   name: "Riley Rider",
 };
 
+/**
+ * Created the way a Google sign-in creates an account: there is no password.
+ * Email and password login answers HTTP 400. The mock Google page can sign
+ * this person in.
+ */
+export const MOCK_GOOGLE_DIRECTOR: MockAccount = {
+  id: "user-google-rd",
+  email: "google-rd@example.com",
+  password: "",
+  role: "race_director",
+  name: "Dana Google",
+};
+
 export const MOCK_ACCOUNTS: readonly MockAccount[] = [
   MOCK_DIRECTOR,
   MOCK_ADMIN,
   MOCK_RIDER,
+  MOCK_GOOGLE_DIRECTOR,
 ];
 
 const LOCAL_AUTH_HOSTS = new Set(["127.0.0.1", "localhost"]);

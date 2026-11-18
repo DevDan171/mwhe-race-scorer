@@ -23,6 +23,13 @@ export interface HubApi {
     email: string;
     password: string;
   }) => Promise<void>;
+  signInWithGoogle: (input: {
+    operatorName: string;
+    baseUrl: string;
+    appId: string;
+    code: string;
+    state: string;
+  }) => Promise<void>;
   saveName: (operatorName: string) => Promise<void>;
   signOut: () => Promise<void>;
   download: (eventId: string) => Promise<void>;

@@ -1,16 +1,30 @@
 import {
+  buildLaptopSignInPageUrl,
+  createSignInState,
   MOCK_APP_ID,
   MOCK_DIRECTOR,
+  MOCK_GOOGLE_DIRECTOR,
   MOCK_RIDER,
   MOCK_SITE_ORIGIN,
+  normalizeSignInCode,
   packageCounts,
   SAMPLE_EVENT_ID,
 } from "@mwhe/core";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import {
+  isAbortError,
+  manualSignInCode,
+  openSignInPage,
+  startLoopbackSignIn,
+  takeSignInCode,
+  watchSignInMessage,
+  type ManualSignInCode,
+} from "../auth/google";
 import { LIVE_SITE_ORIGIN } from "../db/store";
 import { useHub } from "../use-hub";
 import { messageOf } from "../message";
+import { isTauri } from "../platform";
 import { Banner, Field } from "../ui";
 
 const dev = import.meta.env.DEV;
@@ -28,6 +42,13 @@ export function RacePrep() {
   const [replace, setReplace] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [googleCode, setGoogleCode] = useState("");
+  const [googlePage, setGooglePage] = useState<string | null>(null);
+  const googleAbort = useRef<AbortController | null>(null);
+  const typedCode = useRef<ManualSignInCode | null>(null);
+
+  useEffect(() => () => googleAbort.current?.abort(), []);
 
   async function run(action: () => Promise<void>) {
     setError(null);
@@ -38,6 +59,79 @@ export function RacePrep() {
       setError(messageOf(caught));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function startGoogle() {
+    setError(null);
+    if (!name.trim()) {
+      setError("Enter your name. It is written on every changelog entry.");
+      return;
+    }
+    if (!appId.trim()) {
+      setError(
+        "An app id is required. It is in the Base44 editor URL, between /apps/ and /editor/.",
+      );
+      return;
+    }
+    googleAbort.current?.abort();
+    const abort = new AbortController();
+    googleAbort.current = abort;
+    const typed = manualSignInCode();
+    typedCode.current = typed;
+    setGoogleBusy(true);
+    setGoogleCode("");
+    try {
+      const state = createSignInState();
+      let callbackUrl: string | null = null;
+      let loopback: Promise<string> | null = null;
+      if (isTauri()) {
+        const listener = await startLoopbackSignIn(state);
+        if (abort.signal.aborted) {
+          listener.cancel();
+          return;
+        }
+        callbackUrl = listener.callbackUrl;
+        loopback = listener.code;
+        abort.signal.addEventListener("abort", () => listener.cancel());
+      }
+      const pageUrl = buildLaptopSignInPageUrl({
+        siteOrigin: baseUrl,
+        state,
+        callbackUrl,
+      });
+      setGooglePage(pageUrl);
+      const message = watchSignInMessage({
+        siteOrigin: new URL(pageUrl).origin,
+        state,
+        signal: abort.signal,
+      });
+      void openSignInPage(pageUrl).catch((caught: unknown) => {
+        if (!abort.signal.aborted) setError(messageOf(caught));
+      });
+      const code = await Promise.race([
+        message,
+        takeSignInCode([loopback, typed.promise], abort.signal),
+      ]);
+      await hub.signInWithGoogle({
+        operatorName: name,
+        baseUrl,
+        appId,
+        code,
+        state,
+      });
+      if (googleAbort.current === abort) {
+        setGooglePage(null);
+        setGoogleCode("");
+      }
+    } catch (caught) {
+      if (!isAbortError(caught) && !abort.signal.aborted) {
+        setError(messageOf(caught));
+        setGooglePage(null);
+      }
+    } finally {
+      abort.abort();
+      if (googleAbort.current === abort) setGoogleBusy(false);
     }
   }
 
@@ -70,7 +164,8 @@ export function RacePrep() {
       <section className="panel">
         <h2>Sign in</h2>
         <p className="hint">
-          Use the email and password for your MidwestHardEnduro.com account.{" "}
+          Use the email and password for your MidwestHardEnduro.com account, or Sign in
+          with Google. An account that was created with Google has no password.{" "}
           {hub.credentialStore === "windows"
             ? "The sign-in is stored in Windows Credential Manager, not in a file."
             : "This browser preview keeps the sign-in in memory until you close the tab. The Windows app uses Credential Manager."}
@@ -142,7 +237,7 @@ export function RacePrep() {
           <button
             type="button"
             className="primary"
-            disabled={busy}
+            disabled={busy || googleBusy}
             onClick={() =>
               void run(async () => {
                 if (updatingName) {
@@ -165,12 +260,71 @@ export function RacePrep() {
           <button
             type="button"
             className="ghost"
-            disabled={busy || !hub.hasToken}
+            disabled={busy || googleBusy}
+            onClick={() => void startGoogle()}
+          >
+            Sign in with Google
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            disabled={busy || googleBusy || !hub.hasToken}
             onClick={() => void run(() => hub.signOut())}
           >
             Sign out
           </button>
         </div>
+        {googlePage ? (
+          <div className="stack tight">
+            <p className="hint">
+              Finish in the browser. If it shows a code, type it here.
+              {isTauri()
+                ? " The Windows app also catches the browser when it returns on its own."
+                : ""}
+            </p>
+            <p>
+              <a href={googlePage} target="_blank" rel="noopener noreferrer">
+                Open the Google sign-in page
+              </a>
+            </p>
+            <Field label="Code from the browser">
+              <input
+                value={googleCode}
+                onChange={(event) => setGoogleCode(event.target.value)}
+                autoComplete="one-time-code"
+                spellCheck={false}
+                autoCapitalize="characters"
+              />
+            </Field>
+            <div className="row">
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  if (!normalizeSignInCode(googleCode)) {
+                    setError("That code is not valid. Sign in with Google again.");
+                    return;
+                  }
+                  setError(null);
+                  typedCode.current?.submit(googleCode);
+                }}
+              >
+                Use this code
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  googleAbort.current?.abort();
+                  setGooglePage(null);
+                  setGoogleCode("");
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="panel">
@@ -198,7 +352,7 @@ export function RacePrep() {
         <button
           type="button"
           className="primary"
-          disabled={busy || (hub.state !== null && !replace)}
+          disabled={busy || googleBusy || (hub.state !== null && !replace)}
           onClick={() =>
             void run(async () => {
               const id = eventId.trim();
@@ -220,7 +374,9 @@ export function RacePrep() {
             Run <code>pnpm mock:site</code>, then fill in the local test account. Sign in
             as <code>{MOCK_DIRECTOR.email}</code> / <code>{MOCK_DIRECTOR.password}</code>{" "}
             (race director). <code>{MOCK_RIDER.email}</code> uses the same password and is
-            rejected. Download <code>{SAMPLE_EVENT_ID}</code>.
+            rejected. <code>{MOCK_GOOGLE_DIRECTOR.email}</code> has no password; email
+            sign-in returns an error, and Sign in with Google accepts it. Download{" "}
+            <code>{SAMPLE_EVENT_ID}</code>.
           </p>
           <button type="button" className="ghost" disabled={busy} onClick={fillMock}>
             Fill in the mock site
