@@ -27,7 +27,7 @@ impl Default for SyncApp {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SeedInput {
+pub struct SeedInput {
     stored: Option<Value>,
     roster_deltas: Vec<Value>,
     hub_version: String,
@@ -35,7 +35,7 @@ struct SeedInput {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PairingResponse {
+pub struct PairingResponse {
     view: Snapshot,
     payload: PairingPayload,
 }
