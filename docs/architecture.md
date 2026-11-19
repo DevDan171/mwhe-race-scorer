@@ -31,7 +31,7 @@ Still later:
 
 - an embedded HTTP server (Rust / axum) that phones sync with on the local network
 
-`apps/laptop/src-tauri` is not compiled in CI. The registration rules, the download client, and the SQLite store are tested in TypeScript. See [release.md](release.md).
+Ubuntu CI does not compile the Tauri shell. The Windows workflow does, and it publishes an NSIS installer. The registration rules, the download client, and the SQLite store are tested in TypeScript. See [release.md](release.md) and [RELEASING.md](RELEASING.md).
 
 ## Station
 

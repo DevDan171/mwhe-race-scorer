@@ -13,6 +13,13 @@ fn vault_entry() -> Result<Entry, String> {
     Entry::new(SERVICE, VAULT_ACCOUNT).map_err(|err| err.to_string())
 }
 
+/// Target name `keyring` 3 writes into Windows Credential Manager.
+/// The default Windows store joins account and service as `{account}.{service}`.
+/// `windows/hooks.nsh` deletes these only when uninstall is asked to delete app data.
+pub(crate) fn windows_credential_target(account: &str) -> String {
+    format!("{account}.{SERVICE}")
+}
+
 #[tauri::command]
 pub(crate) fn credential_get() -> Result<Option<String>, String> {
     match entry()?.get_password() {
@@ -49,6 +56,23 @@ pub(crate) fn credential_set_vault(value: String) -> Result<(), String> {
     vault_entry()?
         .set_password(trimmed)
         .map_err(|err| err.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{windows_credential_target, ACCOUNT, VAULT_ACCOUNT};
+
+    #[test]
+    fn windows_targets_match_the_uninstaller() {
+        assert_eq!(
+            windows_credential_target(ACCOUNT),
+            "site-bearer-token.MWHE Race Scorer"
+        );
+        assert_eq!(
+            windows_credential_target(VAULT_ACCOUNT),
+            "rider-private-key.MWHE Race Scorer"
+        );
+    }
 }
 
 #[tauri::command]

@@ -1,0 +1,144 @@
+# Releasing the Windows laptop app
+
+Tags are `vMAJOR.MINOR.PATCH`, for example `v0.2.0`. Pushing the tag runs `.github/workflows/release.yml`. That builds the NSIS installer on `windows-latest`, builds the web bundles, and publishes a GitHub Release with the installer attached.
+
+Pull requests do not publish a release. The Windows workflow on the PR uploads the installer as a downloadable Actions artifact so you can try it before the tag.
+
+`schemaVersion` in `@mwhe/core` is still separate from the tag. See [release.md](release.md).
+
+The installer is per user (`currentUser`). It does not need an administrator password. It adds a Start menu shortcut and, on the last installer page, a desktop shortcut that is checked by default. The product name is **MWHE Race Scorer**.
+
+## Cut a release
+
+From a clean `main` that already contains the public updater key, if you are using updates:
+
+```powershell
+git checkout main
+git pull
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Wait for the **Release** workflow. The release page then has the `_x64-setup.exe`. A tag with a hyphen, such as `v0.2.0-rc.1`, is published as a prerelease. Prereleases are not what installed copies treat as "latest", so they do not become the in-app update.
+
+You do not edit `package.json` for this. The workflow sets the installer version from the tag.
+
+## Try a build before the tag
+
+Open the pull request, then **Checks → Windows installer** (or the Actions run). Download the artifact named `mwhe-race-scorer-windows`. That file is the same kind of installer. It is version `0.1.0` unless the run was a tag.
+
+## Updater keys
+
+The updater has its own minisign key. It is not the Windows code-signing certificate. The public key is in `apps/laptop/src-tauri/tauri.conf.json` under `plugins.updater.pubkey`. The private key and its password are GitHub Actions secrets:
+
+| Secret                               | What to paste                                                |
+| ------------------------------------ | ------------------------------------------------------------ |
+| `TAURI_SIGNING_PRIVATE_KEY`          | The whole private key file, including the first comment line |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | The password you chose when generating the key               |
+
+Until both the public key and `TAURI_SIGNING_PRIVATE_KEY` are in place, the installer still builds. The workflow skips `latest.json` and the `.sig` file. Installed copies then have nothing to apply.
+
+Do this once, on your own PC. The private key never goes in git.
+
+1. Install Node 22 and pnpm if this PC does not have them yet. This is only for generating the key. Race directors do not do this.
+2. Open PowerShell in the repo:
+
+```powershell
+cd C:\path\to\mwhe-race-scorer
+pnpm install
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.tauri" | Out-Null
+pnpm --filter @mwhe/laptop exec tauri signer generate -w "$env:USERPROFILE\.tauri\mwhe-race-scorer.key"
+```
+
+3. When it asks for a password, type one and remember it. Do not leave it blank. GitHub cannot store an empty secret, and a later build would not be able to unlock the key.
+4. The command writes two files next to each other:
+   - `%USERPROFILE%\.tauri\mwhe-race-scorer.key` is the private key.
+   - `%USERPROFILE%\.tauri\mwhe-race-scorer.key.pub` is the public key. It is one block of text starting with `dW50cnVzdGVk`. That whole block is what the app needs.
+
+5. Print the public key as a JSON string and copy that whole line, quotes included:
+
+```powershell
+node -e "const fs=require('fs'); const p=fs.readFileSync(process.env.USERPROFILE+'\\.tauri\\mwhe-race-scorer.key.pub','utf8').trim(); console.log(JSON.stringify(p));"
+```
+
+6. In `apps/laptop/src-tauri/tauri.conf.json`, replace `"REPLACE_WITH_THE_MINISIGN_PUBLIC_KEY"` — quotes included — with the line the command printed.
+7. Commit that `tauri.conf.json` change and push it. Do not commit the `.key` file. `.gitignore` already ignores `*.key`.
+8. On GitHub open **Settings → Secrets and variables → Actions → New repository secret**.
+   - Name: `TAURI_SIGNING_PRIVATE_KEY`
+   - Value: the whole private key. In PowerShell:
+
+```powershell
+Get-Content -Raw "$env:USERPROFILE\.tauri\mwhe-race-scorer.key" | Set-Clipboard
+```
+
+Paste that into the secret and save. Then create `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` with the password from step 3.
+
+9. Tag the next release only after that commit is on `main`. The workflow refuses to sign updates while the placeholder public key is still in the file.
+
+The first installed build that contains the real public key is the first one that can update itself. A copy built before that key was committed cannot check a later signature. Install that first keyed build once on the race laptop. Later tags can then use **Update available**.
+
+`latest.json` on the GitHub Release is what the app downloads from:
+
+`https://github.com/DevDan171/mwhe-race-scorer/releases/latest/download/latest.json`
+
+The repository has to stay public, or that address has to be downloadable without a login. The app does not send a GitHub token.
+
+## Azure Artifact Signing later
+
+Windows Authenticode signing is off. The build stays unsigned, and the race-day install steps stay "More info → Run anyway", until all of these Actions secrets exist. If any one of them is missing, signing is skipped. If some are set and some are not, the build fails on purpose so a half-configured release is not published as if it were signed.
+
+| Secret                              | What it is                                                      |
+| ----------------------------------- | --------------------------------------------------------------- |
+| `AZURE_CLIENT_ID`                   | Application (client) ID of the app registration                 |
+| `AZURE_CLIENT_SECRET`               | A client secret from that app registration                      |
+| `AZURE_TENANT_ID`                   | Directory (tenant) ID                                           |
+| `AZURE_SIGNING_ENDPOINT`            | Regional endpoint, such as `https://wus2.codesigning.azure.net` |
+| `AZURE_SIGNING_ACCOUNT`             | Artifact Signing account name                                   |
+| `AZURE_SIGNING_CERTIFICATE_PROFILE` | Certificate profile name inside that account                    |
+
+The endpoint, account, and profile are names, not private keys. They are secrets here so the workflow can see the whole set in one place. Nothing in `tauri.conf.json` has to change when you add them.
+
+Setup, once, in Azure:
+
+1. Create an Artifact Signing account (this is the service formerly called Trusted Signing) and a certificate profile in the region you will use. Note the endpoint for that region, the account name, and the profile name.
+2. In Microsoft Entra ID, create an app registration. Note the client ID and tenant ID. Create a client secret and copy the value immediately.
+3. On the certificate profile, give that app the **Artifact Signing Certificate Profile Signer** role.
+4. Add the six secrets above.
+
+The Windows runner then installs `artifact-signing-cli` and passes it to Tauri as `bundle.windows.signCommand` before the installer is packed. The command Tauri runs is:
+
+```text
+artifact-signing-cli -e <endpoint> -a <account> -c <profile> -d "MWHE Race Scorer" %1
+```
+
+`%1` is the file Tauri is signing. Tauri signs the app and the installer, and the updater signature is taken after that, so the `.sig` matches the signed bytes.
+
+`windows-latest` already has .NET, the Windows SDK `signtool`, and the Azure CLI, which is what `artifact-signing-cli` expects. The three `AZURE_CLIENT_*` values are the environment variables that tool reads. No certificate file is stored in GitHub.
+
+A newly signed app can still show SmartScreen until the certificate has reputation. The "More info → Run anyway" step goes away only after Windows trusts the signature. Signing does not change the per-user install or the rule that uninstall keeps race data.
+
+## What the packaged app is allowed to reach
+
+Checked in `apps/laptop/src/release/packaged-shell.test.ts` and the shell config:
+
+- The window loads the Vite build from the app bundle (`frontendDist`), not `http://localhost:1420`. That address is only `devUrl`, used by `tauri dev`.
+- A production build sets `import.meta.env.DEV` to false, so the mock-site controls are not in the window and the default site is `https://midwesthardenduro.com`.
+- Google sign-in does not run inside the webview. The app opens the system browser and a Rust listener on `127.0.0.1` receives `http://127.0.0.1:<port>/callback`. The content-security policy does not have to allow the website. The native HTTP client does, and its capability list includes `https://midwesthardenduro.com/*`, `https://*.midwesthardenduro.com/*`, and `https://base44.app/*` (login), plus loopback for the dev mock.
+- The vault commands `credential_get_vault` and `credential_set_vault` are in the capability, so emergency contacts can be unlocked in the installed app. The key stays in Credential Manager entry `rider-private-key`.
+- WebView2 is embedded as the bootstrapper (`embedBootstrapper`, silent). The installer is about 2 MB larger and can install the runtime when the laptop is online and does not already have it.
+
+## Checklist on a Windows laptop
+
+Use a build from the PR artifact or from the release.
+
+1. Install. No administrator password. Start menu and desktop shortcut are **MWHE Race Scorer**.
+2. SmartScreen: **More info → Run anyway**.
+3. Sign in (Google, or email). The browser opens, and the app continues on its own.
+4. Pick an event and import it.
+5. Re-import that event.
+6. Race setup. Add a rider.
+7. Rider lookup, including emergency contact.
+8. Close the app and open it again. The event and the rider are still there.
+9. Note the version under **Settings → About** (and at the bottom of the sidebar).
+10. Uninstall with **Delete the application data** left unchecked. Install again. The event is still there.
+11. If an update is published, **Update available** installs it and the event is still there.

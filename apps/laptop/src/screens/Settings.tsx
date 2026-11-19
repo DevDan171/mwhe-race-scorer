@@ -8,6 +8,7 @@ import { useState } from "react";
 
 import { messageOf } from "../message";
 import { isTauri } from "../platform";
+import { useAppVersion } from "../use-app-version";
 import { useHub } from "../use-hub";
 import { Banner, Field } from "../ui";
 import { useGoogleSignIn } from "./use-google-sign-in";
@@ -16,6 +17,7 @@ const dev = import.meta.env.DEV;
 
 export function Settings() {
   const hub = useHub();
+  const version = useAppVersion();
   const google = useGoogleSignIn();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -178,6 +180,19 @@ export function Settings() {
           </div>
         </section>
       ) : null}
+      <section className="card" style={{ padding: 16 }}>
+        <h2>About</h2>
+        <p>
+          MWHE Race Scorer
+          {version ? ` · version ${version}` : ""}
+        </p>
+        <p className="hint">
+          Races stay on this laptop
+          {isTauri() ? " in your Windows profile" : ""}. Signing out does not delete them.
+          Uninstalling the program keeps them unless you check "Delete the application
+          data".
+        </p>
+      </section>
     </div>
   );
 }

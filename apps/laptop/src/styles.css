@@ -113,6 +113,13 @@ button:disabled {
   padding: 16px 10px 0;
   color: var(--faint);
   font-size: 0.82rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-version {
+  font-size: 0.75rem;
 }
 
 .workspace {
@@ -427,6 +434,47 @@ tr.clickable {
   display: grid;
   place-items: center;
   padding: 28px 0 40px;
+}
+
+.signin-stack {
+  width: min(460px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.signin-stack .signin-card {
+  width: 100%;
+}
+
+.update-banner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin: 12px 22px 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #6a3d22;
+  background: #1b1714;
+}
+
+.signin-stack .update-banner {
+  margin: 0;
+}
+
+.update-banner strong {
+  color: var(--orange-2);
+}
+
+.update-banner p {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.update-error {
+  color: var(--danger) !important;
 }
 
 .signin-card {

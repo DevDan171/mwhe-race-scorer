@@ -4,4 +4,5 @@ coverage
 pnpm-lock.yaml
 apps/laptop/src-tauri/target
 apps/laptop/src-tauri/gen
+apps/laptop/src-tauri/ci.windows.json
 apps/station/android
