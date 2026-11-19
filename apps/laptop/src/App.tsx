@@ -1,19 +1,34 @@
-import { useHub } from "./use-hub";
+import { roleLabel } from "./format";
 import { Changelog } from "./screens/Changelog";
-import { RacePrep } from "./screens/RacePrep";
+import { Events } from "./screens/Events";
 import { RaceSetup } from "./screens/RaceSetup";
 import { Registration } from "./screens/Registration";
-import { Banner } from "./ui";
+import { Results } from "./screens/Results";
+import { RiderLookup } from "./screens/RiderLookup";
+import { Scoring } from "./screens/Scoring";
+import { Settings } from "./screens/Settings";
+import { SignIn } from "./screens/SignIn";
+import { useHub, type ScreenId } from "./use-hub";
+import { Banner, Logo, OfflinePill, SignedInPill } from "./ui";
 
-const NAV = [
-  { id: "prep", label: "Race Prep" },
-  { id: "setup", label: "Race Setup" },
+const EVENT_NAV: { id: ScreenId; label: string }[] = [
+  { id: "events", label: "Events" },
+  { id: "setup", label: "Race setup" },
   { id: "registration", label: "Registration" },
+  { id: "lookup", label: "Rider lookup" },
+  { id: "scoring", label: "Scoring" },
+  { id: "results", label: "Results" },
+];
+
+const SYSTEM_NAV: { id: ScreenId; label: string }[] = [
+  { id: "settings", label: "Settings" },
   { id: "changelog", label: "Changelog" },
-] as const;
+];
 
 export function App() {
   const hub = useHub();
+  const signedOut = !hub.account && !hub.hasToken;
+  const hasEvents = Object.keys(hub.events).length > 0;
 
   if (hub.bootError) {
     return (
@@ -31,18 +46,32 @@ export function App() {
     );
   }
 
+  if (signedOut && !hasEvents) {
+    return <SignIn />;
+  }
+
   return (
     <div className="app">
-      <nav aria-label="Sections">
-        <div className="brand">
-          <span>MWHE</span>
-          <strong>Race Scorer</strong>
-        </div>
-        {NAV.map((item) => (
+      <nav className="sidebar" aria-label="Sections">
+        <Logo />
+        <p className="nav-label">EVENT</p>
+        {EVENT_NAV.map((item) => (
           <button
             key={item.id}
             type="button"
-            className={hub.screen === item.id ? "nav active" : "nav"}
+            className={hub.screen === item.id ? "nav-button active" : "nav-button"}
+            aria-current={hub.screen === item.id ? "page" : undefined}
+            onClick={() => hub.setScreen(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+        <p className="nav-label">SYSTEM</p>
+        {SYSTEM_NAV.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={hub.screen === item.id ? "nav-button active" : "nav-button"}
             aria-current={hub.screen === item.id ? "page" : undefined}
             onClick={() => hub.setScreen(item.id)}
           >
@@ -50,17 +79,48 @@ export function App() {
           </button>
         ))}
         <p className="nav-foot">
-          {hub.state
-            ? `${hub.state.race.event.name} · v${hub.state.rosterVersion}`
-            : "No race downloaded"}
+          {hub.state ? `${hub.state.race.event.name}` : "No event imported"}
         </p>
       </nav>
-      <main>
-        {hub.screen === "prep" ? <RacePrep /> : null}
-        {hub.screen === "setup" ? <RaceSetup /> : null}
-        {hub.screen === "registration" ? <Registration /> : null}
-        {hub.screen === "changelog" ? <Changelog /> : null}
-      </main>
+      <div className="workspace">
+        <header className="topbar">
+          <OfflinePill />
+          {hub.account ? (
+            <SignedInPill name={hub.account.name} role={roleLabel(hub.account.role)} />
+          ) : (
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => hub.setScreen("settings")}
+            >
+              Sign in
+            </button>
+          )}
+        </header>
+        <main>
+          {hub.notice ? (
+            <div className="stack" style={{ marginBottom: 12 }}>
+              <Banner tone="info">{hub.notice}</Banner>
+            </div>
+          ) : null}
+          {signedOut && hub.screen !== "settings" ? (
+            <div className="stack" style={{ marginBottom: 12 }}>
+              <Banner tone="info">
+                Signed out. Races on this laptop still work. Sign in from Settings to
+                refresh the site.
+              </Banner>
+            </div>
+          ) : null}
+          {hub.screen === "events" ? <Events /> : null}
+          {hub.screen === "setup" ? <RaceSetup /> : null}
+          {hub.screen === "registration" ? <Registration /> : null}
+          {hub.screen === "lookup" ? <RiderLookup /> : null}
+          {hub.screen === "scoring" ? <Scoring /> : null}
+          {hub.screen === "results" ? <Results /> : null}
+          {hub.screen === "settings" ? <Settings /> : null}
+          {hub.screen === "changelog" ? <Changelog /> : null}
+        </main>
+      </div>
     </div>
   );
 }

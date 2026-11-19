@@ -10,5 +10,9 @@ export function createTauriCredentialStore(): CredentialStore {
       await invoke("credential_set", { token });
     },
     clearToken: () => invoke("credential_clear"),
+    readVaultKey: () => invoke<string | null>("credential_get_vault"),
+    async writeVaultKey(value: string) {
+      await invoke("credential_set_vault", { value });
+    },
   };
 }

@@ -122,7 +122,7 @@ export async function openSignInPage(url: string): Promise<void> {
   const opened = window.open(url, "mwhe-google-sign-in");
   if (!opened) {
     throw new Error(
-      "The browser blocked the sign-in window. Use the link below, then type the code.",
+      "The browser blocked the sign-in window. Allow pop-ups, or choose Enter a code instead.",
     );
   }
 }

@@ -53,6 +53,42 @@ async function loadFile(): Promise<Uint8Array | null> {
   }
 }
 
+const VAULT_KEY = "vault.key";
+
+/** Browser preview only. The Windows app stores this key in Credential Manager. */
+export async function readBrowserVaultKey(): Promise<string | null> {
+  const db = await openDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = db.transaction(STORE, "readonly").objectStore(STORE).get(VAULT_KEY);
+      request.onsuccess = () => {
+        resolve(typeof request.result === "string" ? request.result : null);
+      };
+      request.onerror = () =>
+        reject(request.error ?? new Error("Could not read the vault key"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function writeBrowserVaultKey(value: string): Promise<void> {
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const request = db
+        .transaction(STORE, "readwrite")
+        .objectStore(STORE)
+        .put(value, VAULT_KEY);
+      request.onsuccess = () => resolve();
+      request.onerror = () =>
+        reject(request.error ?? new Error("Could not save the vault key"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
 async function saveFile(bytes: Uint8Array): Promise<void> {
   const db = await openDb();
   try {

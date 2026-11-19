@@ -9,6 +9,10 @@ export type RegistrationErrorCode =
   | "race_not_found"
   | "check_not_found"
   | "start_row_not_found"
+  | "row_class"
+  | "race_class"
+  | "not_in_race"
+  | "safety_required"
   | "no_change"
   | "duplicate_entry"
   | "roster_version";

@@ -12,6 +12,7 @@ export {
   startRowSchema,
   assignedRowSchema,
   riderClassSchema,
+  PRIVATE_RIDER_FIELDS,
   defaultRace,
   primaryRace,
   sameRaceLength,
@@ -105,10 +106,45 @@ export {
   moveClassToStartRow,
   addClassToStartRow,
   removeClassFromStartRow,
+  addStartRow,
+  removeStartRow,
+  assignRiderToRow,
+  clearRiderRow,
+  setRiderPlacements,
+  registerRider,
+  raceOffersClass,
+  racesOfferingClass,
+  racesForRegistration,
+  unassignedInRace,
+  rowPlannedStart,
   type RaceDayState,
   type ChangeAudit,
   type RacePackageCounts,
+  type RacePlacement,
+  type NewRiderInput,
 } from "./registration/service.js";
+export {
+  applyReimport,
+  previewReimport,
+  contactSecrets,
+} from "./registration/reimport.js";
+export type {
+  ReimportPreview,
+  ReimportRaceLine,
+  ReimportRiderLine,
+} from "./registration/reimport.js";
+export {
+  SAFETY_ACKNOWLEDGEMENT,
+  SAFETY_CHECKBOX_LABEL,
+  collectPrivateRecords,
+  contactFrom,
+  exportPublicRacePackage,
+  hasEmergencyContact,
+  privateValues,
+  restorePrivateRecords,
+  textContainsPrivateValue,
+} from "./privacy.js";
+export type { RiderContact, RiderPrivateRecord } from "./privacy.js";
 export { RegistrationError, type RegistrationErrorCode } from "./registration/errors.js";
 
 export {
@@ -119,20 +155,29 @@ export {
   getSignedInUser,
   HUB_ROLES,
   isHubRole,
+  listEvents,
   signInWithPassword,
   siteAccountSchema,
   siteErrorSchema,
   SiteApiError,
+  uploadSeriesRiders,
+  eventSummarySchema,
+  seriesRiderUploadSchema,
+  type EventSummary,
   type ExchangeSignInCodeOptions,
   type GetRacePackageOptions,
   type GetRacePackageResponse,
   type GetSignedInUserOptions,
   type HubRole,
+  type ListEventsOptions,
+  type SeriesRiderUpload,
   type SignedInSession,
   type SignInOptions,
   type SiteAccount,
   type SiteErrorBody,
+  type UploadSeriesRidersOptions,
 } from "./site/client.js";
+export { LIVE_APP_ID, LIVE_SITE_ORIGIN } from "./site/live.js";
 export {
   buildLaptopSignInPageUrl,
   createSignInState,
@@ -161,6 +206,11 @@ export {
   createSampleRacePackage,
   SAMPLE_EVENT_ID,
 } from "./fixtures/sample-race-package.js";
+export {
+  SCORING_TEST_EVENT_ID,
+  mockCatalog,
+  touchRacePackage,
+} from "./site/mock-catalog.js";
 
 export { scoreRace, type ScoreRaceResult } from "./scoring/engine.js";
 export {

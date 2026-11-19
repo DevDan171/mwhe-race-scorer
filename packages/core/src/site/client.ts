@@ -1,4 +1,9 @@
-import { racePackageSchema, type RacePackage } from "../schemas/race-package.js";
+import { isoTimestampSchema, riderNumberSchema } from "../schemas/common.js";
+import {
+  racePackageSchema,
+  riderClassSchema,
+  type RacePackage,
+} from "../schemas/race-package.js";
 import { z } from "zod";
 
 import { isSignInState, normalizeSignInCode } from "./google-sign-in.js";
@@ -402,6 +407,199 @@ export async function exchangeSignInCode(
   };
 }
 
+export const eventSummarySchema = z.strictObject({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  date: z.iso.date(),
+  endDate: z.iso.date().nullable(),
+  locationName: z.string(),
+  round: z.number().int().nullable(),
+  status: z.string(),
+  updatedAt: isoTimestampSchema.nullable(),
+  raceCount: z.number().int().nonnegative(),
+  registrationCount: z.number().int().nonnegative(),
+});
+
+export type EventSummary = z.infer<typeof eventSummarySchema>;
+
+const eventListResponseSchema = z.strictObject({
+  ok: z.literal(true),
+  events: z.array(eventSummarySchema),
+});
+
+export const seriesRiderUploadSchema = z.strictObject({
+  localId: z.string().min(1),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  bikeNumber: riderNumberSchema,
+  riderClass: riderClassSchema,
+  payment: z.string().min(1),
+  dateOfBirth: z.iso.date().nullable(),
+  phone: z.string().nullable(),
+  email: z.string().nullable(),
+  emergencyContactName: z.string().nullable(),
+  emergencyContactPhone: z.string().nullable(),
+  emergencyContactRelation: z.string().nullable(),
+  safetyAcknowledgedAt: isoTimestampSchema,
+});
+
+export type SeriesRiderUpload = z.infer<typeof seriesRiderUploadSchema>;
+
+const uploadResponseSchema = z.strictObject({
+  ok: z.literal(true),
+  created: z.array(
+    z.strictObject({
+      localId: z.string().min(1),
+      seriesId: z.string().min(1),
+    }),
+  ),
+});
+
+export interface ListEventsOptions {
+  baseUrl: string;
+  token: string;
+  fetch?: typeof globalThis.fetch;
+}
+
+export interface UploadSeriesRidersOptions {
+  baseUrl: string;
+  token: string;
+  riders: SeriesRiderUpload[];
+  fetch?: typeof globalThis.fetch;
+}
+
+/** GET {baseUrl}/functions/listEvents — every event the signed-in director may import. */
+export async function listEvents(options: ListEventsOptions): Promise<EventSummary[]> {
+  const body = await authorizedGet(options, "/functions/listEvents");
+  const parsed = eventListResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new SiteApiError(
+      502,
+      "bad_response",
+      "The site returned an event list this version of the scorer cannot read",
+    );
+  }
+  return parsed.data.events;
+}
+
+/**
+ * POST {baseUrl}/functions/uploadSeriesRiders
+ * Creates series Rider rows for people added on the laptop. Race-day only.
+ */
+export async function uploadSeriesRiders(
+  options: UploadSeriesRidersOptions,
+): Promise<{ localId: string; seriesId: string }[]> {
+  const riders = z.array(seriesRiderUploadSchema).parse(options.riders);
+  const token = options.token.trim();
+  if (!token) {
+    throw new SiteApiError(
+      401,
+      "unauthorized",
+      "A race director or admin sign-in is required",
+    );
+  }
+  const url = functionUrl(options.baseUrl, "/functions/uploadSeriesRiders");
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  let response: Response;
+  try {
+    response = await fetchImpl(url, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ riders }),
+    });
+  } catch (error) {
+    throw new SiteApiError(0, "network", networkMessage(error));
+  }
+  const body: unknown = await readJson(response);
+  if (!response.ok || !isOk(body)) throw errorFrom(response, body);
+  const parsed = uploadResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new SiteApiError(
+      502,
+      "bad_response",
+      "The site did not confirm the new series riders",
+    );
+  }
+  return parsed.data.created;
+}
+
+async function authorizedGet(
+  options: { baseUrl: string; token: string; fetch?: typeof globalThis.fetch },
+  pathname: string,
+): Promise<unknown> {
+  const token = options.token.trim();
+  if (!token) {
+    throw new SiteApiError(
+      401,
+      "unauthorized",
+      "A race director or admin sign-in is required",
+    );
+  }
+  const url = functionUrl(options.baseUrl, pathname);
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  let response: Response;
+  try {
+    response = await fetchImpl(url, {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (error) {
+    throw new SiteApiError(0, "network", networkMessage(error));
+  }
+  const body: unknown = await readJson(response);
+  if (!response.ok || !isOk(body)) throw errorFrom(response, body);
+  return body;
+}
+
+function functionUrl(baseUrl: string, pathname: string): URL {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new SiteApiError(
+      400,
+      "bad_site",
+      "Site address must be a full URL, like https://midwesthardenduro.com",
+    );
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new SiteApiError(
+      400,
+      "bad_site",
+      "Site address must be a full URL, like https://midwesthardenduro.com",
+    );
+  }
+  url.pathname = pathname;
+  url.search = "";
+  url.hash = "";
+  return url;
+}
+
+function errorFrom(response: Response, body: unknown): SiteApiError {
+  const parsed = siteErrorSchema.safeParse(body);
+  if (parsed.success) {
+    return new SiteApiError(
+      response.status || 500,
+      parsed.data.error,
+      parsed.data.message,
+    );
+  }
+  return new SiteApiError(
+    response.status || 500,
+    "bad_response",
+    `The site returned HTTP ${response.status || "error"} without an error envelope`,
+  );
+}
+
 function authUrl(siteBaseUrl: string, appId: string, kind: "login" | "me"): URL {
   let origin: string;
   try {
@@ -457,7 +655,7 @@ function loginFailure(status: number, body: unknown): SiteApiError {
     return new SiteApiError(
       404,
       "sign_in_unavailable",
-      "Sign-in was not found. Check the app id from the Base44 editor URL",
+      "Sign-in was not found on the site",
     );
   }
   if (status === 429) {

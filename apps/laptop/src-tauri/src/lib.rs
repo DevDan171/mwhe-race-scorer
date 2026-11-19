@@ -1,7 +1,9 @@
 mod credentials;
 mod sign_in;
 
-use credentials::{credential_clear, credential_get, credential_set};
+use credentials::{
+    credential_clear, credential_get, credential_get_vault, credential_set, credential_set_vault,
+};
 use sign_in::{
     cancel_sign_in_callback, open_sign_in_page, start_sign_in_callback, wait_sign_in_callback,
 };
@@ -15,6 +17,8 @@ pub fn run() {
             credential_get,
             credential_set,
             credential_clear,
+            credential_get_vault,
+            credential_set_vault,
             open_sign_in_page,
             start_sign_in_callback,
             wait_sign_in_callback,

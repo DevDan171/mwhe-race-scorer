@@ -96,9 +96,9 @@ export function renderSignInResultPage(input: {
   <title>Code for the laptop</title>
 </head>
 <body>
-  <h1>Type this code into MWHE Race Scorer</h1>
-  <p id="code">${escapeHtml(input.code)}</p>
-  <p>The code works once and expires in two minutes. You can close this window after the laptop accepts it.</p>
+  <h1>You can close this window</h1>
+  <p>MWHE Race Scorer will finish signing in. Nothing else to copy.</p>
+  <p>Trouble signing in? The code is <strong id="code">${escapeHtml(input.code)}</strong>. It works once and lasts ten minutes.</p>
   ${link}
   <script>
     const handoff = ${handoff};
