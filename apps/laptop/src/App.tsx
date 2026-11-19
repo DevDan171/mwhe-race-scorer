@@ -8,6 +8,8 @@ import { RiderLookup } from "./screens/RiderLookup";
 import { Scoring } from "./screens/Scoring";
 import { Settings } from "./screens/Settings";
 import { SignIn } from "./screens/SignIn";
+import { UpdatePrompt } from "./screens/UpdatePrompt";
+import { useAppVersion } from "./use-app-version";
 import { useHub, type ScreenId } from "./use-hub";
 import { Banner, Logo, OfflinePill, SignedInPill } from "./ui";
 
@@ -27,6 +29,7 @@ const SYSTEM_NAV: { id: ScreenId; label: string }[] = [
 
 export function App() {
   const hub = useHub();
+  const version = useAppVersion();
   const signedOut = !hub.account && !hub.hasToken;
   const hasEvents = Object.keys(hub.events).length > 0;
 
@@ -79,7 +82,10 @@ export function App() {
           </button>
         ))}
         <p className="nav-foot">
-          {hub.state ? `${hub.state.race.event.name}` : "No event imported"}
+          <span>{hub.state ? hub.state.race.event.name : "No event imported"}</span>
+          <span className="nav-version">
+            {version ? `Version ${version}` : "Version …"}
+          </span>
         </p>
       </nav>
       <div className="workspace">
@@ -97,6 +103,7 @@ export function App() {
             </button>
           )}
         </header>
+        <UpdatePrompt />
         <main>
           {hub.notice ? (
             <div className="stack" style={{ marginBottom: 12 }}>

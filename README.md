@@ -58,9 +58,11 @@ The station app still renders the Timber Ridge demo roster. That fixture is not 
 - [Site API](docs/site-api.md) (what to build in Base44)
 - [Scoring rules](docs/scoring-rules.md)
 - [Releases](docs/release.md)
+- [Install on Windows](docs/install-windows.md)
+- [Cutting a Windows release](docs/RELEASING.md)
 
 ## Phase 1 status
 
 Done: email sign-in and Google sign-in that hands a one-time code back to the app, an event list with import and re-import, race setup with rows and class checks, offline registration, encrypted emergency contacts, rider lookup, and a changelog.
 
-Not done, and called out in [docs/release.md](docs/release.md): the Windows installer and the Android APK. CI typechecks and builds the web bundles. It does not compile the Tauri shell. Paste the files in [docs/base44/](docs/base44/) into Base44. `laptopExchangeCode` is unchanged. The live site sign-in has not been tried against MidwestHardEnduro.com yet. The mock covers the same calls.
+The Windows installer is built on pull requests and published from a version tag. Install steps are in [docs/install-windows.md](docs/install-windows.md). Cutting a release, updater keys, and Azure signing are in [docs/RELEASING.md](docs/RELEASING.md). The Android APK is still not built. Ubuntu CI typechecks and builds the web bundles. It does not compile the Tauri shell. Paste the files in [docs/base44/](docs/base44/) into Base44. `laptopExchangeCode` is unchanged. The live site sign-in has not been tried against MidwestHardEnduro.com yet. The mock covers the same calls.

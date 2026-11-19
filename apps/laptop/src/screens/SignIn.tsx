@@ -19,13 +19,16 @@ import {
 } from "../auth/google";
 import { messageOf } from "../message";
 import { isTauri } from "../platform";
+import { useAppVersion } from "../use-app-version";
 import { useHub } from "../use-hub";
 import { Banner, Field, Logo, OfflinePill } from "../ui";
+import { UpdatePrompt } from "./UpdatePrompt";
 
 const dev = import.meta.env.DEV;
 
 export function SignIn() {
   const hub = useHub();
+  const version = useAppVersion();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -115,102 +118,106 @@ export function SignIn() {
         <OfflinePill />
       </header>
       <div className="signin-stage">
-        <section className="signin-card">
-          <Logo />
-          {googleBusy ? (
-            <GoogleWait
-              error={error}
-              signedInName={signedInName}
-              showCode={showCode}
-              typed={typed}
-              onTyped={setTyped}
-              onShowCode={() => setShowCode(true)}
-              onSubmitCode={() => {
-                const code = normalizeSignInCode(typed);
-                if (!code) {
-                  setError("That code is not valid. Sign in with Google again.");
-                  return;
-                }
-                typedCode.current?.submit(code);
-              }}
-              onCancel={cancelGoogle}
-            />
-          ) : (
-            <>
-              <p className="lede">
-                Sign in with the account you use on midwesthardenduro.com. Race directors
-                and admins only.
-              </p>
-              {error ? <Banner tone="error">{error}</Banner> : null}
-              <button
-                type="button"
-                className="btn google"
-                onClick={() => void startGoogle()}
-              >
-                <GoogleMark /> Sign in with Google
-              </button>
-              <div className="divider">or use email</div>
-              <Field label="Email">
-                <input
-                  type="email"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </Field>
-              <Field label="Password">
-                <input
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </Field>
-              <button
-                type="button"
-                className="btn"
-                disabled={busy}
-                onClick={() => void emailSignIn()}
-              >
-                Sign in with email
-              </button>
-              <p className="hint">
-                Site: {dev ? hub.baseUrl : LIVE_SITE_ORIGIN} (built in — nothing to type).
-                Your sign-in is stored in{" "}
-                {isTauri() ? "Windows Credential Manager" : "this tab only"}.
-              </p>
-            </>
-          )}
-          {dev ? (
-            <details className="dev-note">
-              <summary>Developer: mock site</summary>
-              <p>
-                Point this preview at the mock. The packaged app always uses{" "}
-                {LIVE_SITE_ORIGIN}.
-              </p>
-              <div className="row">
+        <div className="signin-stack">
+          <UpdatePrompt />
+          <section className="signin-card">
+            <Logo />
+            {googleBusy ? (
+              <GoogleWait
+                error={error}
+                signedInName={signedInName}
+                showCode={showCode}
+                typed={typed}
+                onTyped={setTyped}
+                onShowCode={() => setShowCode(true)}
+                onSubmitCode={() => {
+                  const code = normalizeSignInCode(typed);
+                  if (!code) {
+                    setError("That code is not valid. Sign in with Google again.");
+                    return;
+                  }
+                  typedCode.current?.submit(code);
+                }}
+                onCancel={cancelGoogle}
+              />
+            ) : (
+              <>
+                <p className="lede">
+                  Sign in with the account you use on midwesthardenduro.com. Race
+                  directors and admins only.
+                </p>
+                {error ? <Banner tone="error">{error}</Banner> : null}
                 <button
                   type="button"
-                  className="btn small"
-                  onClick={() => {
-                    void hub.setDevSite(MOCK_SITE_ORIGIN);
-                    setEmail(MOCK_DIRECTOR.email);
-                    setPassword(MOCK_DIRECTOR.password);
-                  }}
+                  className="btn google"
+                  onClick={() => void startGoogle()}
                 >
-                  Use the mock site
+                  <GoogleMark /> Sign in with Google
                 </button>
+                <div className="divider">or use email</div>
+                <Field label="Email">
+                  <input
+                    type="email"
+                    autoComplete="username"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </Field>
+                <Field label="Password">
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </Field>
                 <button
                   type="button"
-                  className="btn small"
-                  onClick={() => void hub.setDevSite(LIVE_SITE_ORIGIN)}
+                  className="btn"
+                  disabled={busy}
+                  onClick={() => void emailSignIn()}
                 >
-                  Use the live site
+                  Sign in with email
                 </button>
-              </div>
-            </details>
-          ) : null}
-        </section>
+                <p className="hint">
+                  Site: {dev ? hub.baseUrl : LIVE_SITE_ORIGIN} (built in — nothing to
+                  type). Your sign-in is stored in{" "}
+                  {isTauri() ? "Windows Credential Manager" : "this tab only"}.
+                </p>
+              </>
+            )}
+            {dev ? (
+              <details className="dev-note">
+                <summary>Developer: mock site</summary>
+                <p>
+                  Point this preview at the mock. The packaged app always uses{" "}
+                  {LIVE_SITE_ORIGIN}.
+                </p>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => {
+                      void hub.setDevSite(MOCK_SITE_ORIGIN);
+                      setEmail(MOCK_DIRECTOR.email);
+                      setPassword(MOCK_DIRECTOR.password);
+                    }}
+                  >
+                    Use the mock site
+                  </button>
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => void hub.setDevSite(LIVE_SITE_ORIGIN)}
+                  >
+                    Use the live site
+                  </button>
+                </div>
+              </details>
+            ) : null}
+            <p className="hint">{version ? `Version ${version}` : "Version …"}</p>
+          </section>
+        </div>
       </div>
     </div>
   );

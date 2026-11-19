@@ -1,0 +1,79 @@
+name: Windows installer
+
+on:
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: windows-installer-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    name: Build NSIS installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+      AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+      AZURE_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_SIGNING_CERTIFICATE_PROFILE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.90.0
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/laptop/src-tauri
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare the Windows build
+        id: prepare
+        run: pnpm --filter @mwhe/laptop exec tsx src/release/write-windows-config.ts
+
+      - name: Install Azure Artifact Signing CLI
+        if: steps.prepare.outputs.signing == 'true'
+        run: cargo install artifact-signing-cli --locked
+
+      - name: Build the installer
+        run: pnpm --filter @mwhe/laptop exec tauri build --config src-tauri/ci.windows.json
+
+      - name: Write latest.json when this is a signed release
+        run: pnpm --filter @mwhe/laptop exec tsx src/release/write-latest-json.ts
+
+      - name: Collect installer files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-windows | Out-Null
+          Copy-Item "apps/laptop/src-tauri/target/release/bundle/nsis/*-setup.exe" release-windows
+          Copy-Item "apps/laptop/src-tauri/target/release/bundle/nsis/*-setup.exe.sig" release-windows -ErrorAction SilentlyContinue
+          Copy-Item "apps/laptop/src-tauri/target/release/bundle/nsis/latest.json" release-windows -ErrorAction SilentlyContinue
+          Get-ChildItem release-windows | Format-Table Name, Length
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: mwhe-race-scorer-windows
+          path: release-windows/*
+          if-no-files-found: error
