@@ -37,6 +37,11 @@ export interface ReimportPreview {
   riderUpdates: ReimportRiderLine[];
   raceChanges: ReimportRaceLine[];
   raceDayKept: { riderNumber: number; name: string }[];
+  /**
+   * Site emergency contacts copied because the laptop copy could not be
+   * unlocked. Names and numbers only. The contact values stay out of the preview.
+   */
+  contactsRestored: { riderNumber: number; name: string }[];
   /** Re-import does not remove riders. This stays 0. */
   removedCount: number;
   unchangedCount: number;
@@ -58,6 +63,7 @@ interface AuditBatch {
 export function previewReimport(
   state: RaceDayState,
   incomingRaw: RacePackage,
+  options?: { restoreUnreadableContacts?: boolean },
 ): ReimportPreview {
   const incoming = racePackageSchema.parse(incomingRaw);
   const dayOf = new Set(state.dayOfRegistrations.map((entry) => entry.number));
@@ -156,6 +162,9 @@ export function previewReimport(
     riderUpdates,
     raceChanges,
     raceDayKept,
+    contactsRestored: options?.restoreUnreadableContacts
+      ? contactsToRestore(state, incoming)
+      : [],
     removedCount: 0,
     unchangedCount,
     applyCount,
@@ -166,9 +175,10 @@ export function applyReimport(
   state: RaceDayState,
   incomingRaw: RacePackage,
   audit: AuditBatch,
+  options?: { restoreUnreadableContacts?: boolean },
 ): RaceDayState {
   const incoming = racePackageSchema.parse(structuredClone(incomingRaw));
-  const preview = previewReimport(state, incoming);
+  const preview = previewReimport(state, incoming, options);
   const who = audit.who.trim();
   const why = audit.why.trim();
   if (!who) {
@@ -178,11 +188,15 @@ export function applyReimport(
     throw new RegistrationError("missing_field", "A reason is required");
   }
   if (preview.applyCount === 0) {
-    return raceDayStateSchema.parse({
-      ...state,
-      snapshot: incoming,
-      sourceUpdatedAt: incoming.event.updatedAt ?? state.sourceUpdatedAt ?? null,
-    });
+    return finishReimport(
+      raceDayStateSchema.parse({
+        ...state,
+        snapshot: incoming,
+        sourceUpdatedAt: incoming.event.updatedAt ?? state.sourceUpdatedAt ?? null,
+      }),
+      incoming,
+      options?.restoreUnreadableContacts === true,
+    );
   }
   if (audit.entryIds.length < preview.applyCount) {
     throw new RegistrationError("missing_field", "A changelog id is required");
@@ -342,16 +356,100 @@ export function applyReimport(
     ];
   }
 
+  return finishReimport(
+    raceDayStateSchema.parse({
+      ...state,
+      downloadedAt: audit.when,
+      rosterVersion,
+      snapshot: incoming,
+      race,
+      changelog,
+      rosterDeltas,
+      sourceUpdatedAt: incoming.event.updatedAt ?? state.sourceUpdatedAt ?? null,
+    }),
+    incoming,
+    options?.restoreUnreadableContacts === true,
+  );
+}
+
+function finishReimport(
+  state: RaceDayState,
+  incoming: RacePackage,
+  restoreUnreadableContacts: boolean,
+): RaceDayState {
+  if (!restoreUnreadableContacts) return state;
+  return restoreUnreadableContactsFromSite(state, incoming);
+}
+
+/**
+ * Copy site contact fields onto riders whose laptop copy could not be
+ * unlocked. Race-day riders added on the laptop are left alone: the site
+ * does not have the emergency info that was typed here.
+ */
+function restoreUnreadableContactsFromSite(
+  state: RaceDayState,
+  incoming: RacePackage,
+): RaceDayState {
+  const dayOfNumbers = new Set(state.dayOfRegistrations.map((entry) => entry.number));
+  const dayOfSeries = new Set(state.dayOfRegistrations.map((entry) => entry.seriesId));
+  const registrations = state.race.registrations.map((registration) => {
+    const site = siteContactSource(registration, incoming, dayOfNumbers, dayOfSeries);
+    if (!site || privateValues(site).length === 0) return registration;
+    return { ...registration, ...contactFrom(site) };
+  });
+  const riders = state.race.riders.map((rider) => {
+    if (dayOfSeries.has(rider.seriesId)) return rider;
+    const site = incoming.riders.find((entry) => entry.seriesId === rider.seriesId);
+    if (!site || privateValues(site).length === 0) return rider;
+    return { ...rider, ...contactFrom(site) };
+  });
   return raceDayStateSchema.parse({
     ...state,
-    downloadedAt: audit.when,
-    rosterVersion,
-    snapshot: incoming,
-    race,
-    changelog,
-    rosterDeltas,
-    sourceUpdatedAt: incoming.event.updatedAt ?? state.sourceUpdatedAt ?? null,
+    race: { ...state.race, registrations, riders },
   });
+}
+
+function contactsToRestore(
+  state: RaceDayState,
+  incoming: RacePackage,
+): { riderNumber: number; name: string }[] {
+  const dayOfNumbers = new Set(state.dayOfRegistrations.map((entry) => entry.number));
+  const dayOfSeries = new Set(state.dayOfRegistrations.map((entry) => entry.seriesId));
+  const lines: { riderNumber: number; name: string }[] = [];
+  for (const registration of state.race.registrations) {
+    const site = siteContactSource(registration, incoming, dayOfNumbers, dayOfSeries);
+    if (!site || privateValues(site).length === 0) continue;
+    lines.push({ riderNumber: registration.riderNumber, name: registration.name });
+  }
+  return lines;
+}
+
+function siteContactSource(
+  registration: EventRegistration,
+  incoming: RacePackage,
+  dayOfNumbers: ReadonlySet<number>,
+  dayOfSeries: ReadonlySet<string>,
+): EventRegistration | null {
+  if (
+    dayOfNumbers.has(registration.riderNumber) ||
+    (registration.seriesId !== null && dayOfSeries.has(registration.seriesId))
+  ) {
+    return null;
+  }
+  const site = incoming.registrations.find(
+    (entry) =>
+      entry.riderNumber === registration.riderNumber ||
+      (registration.seriesId !== null && entry.seriesId === registration.seriesId),
+  );
+  if (!site) return null;
+  if (
+    registration.seriesId !== site.seriesId &&
+    registration.seriesId !== null &&
+    site.seriesId !== null
+  ) {
+    return null;
+  }
+  return site;
 }
 
 function siteIsNewer(

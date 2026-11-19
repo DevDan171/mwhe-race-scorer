@@ -19,7 +19,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-Wait for the **Release** workflow. The release page then has the `_x64-setup.exe`. A tag with a hyphen, such as `v0.2.0-rc.1`, is published as a prerelease. Prereleases are not what installed copies treat as "latest", so they do not become the in-app update.
+Wait for the **Release** workflow. The release page then has `MWHE-Race-Scorer_<version>_x64-setup.exe`. The name has hyphens, not spaces, because GitHub would otherwise rename the file and the in-app update URL would miss it. A tag with a hyphen, such as `v0.2.1-rc.1`, is published as a prerelease. Prereleases are not what installed copies treat as "latest", so they do not become the in-app update.
 
 You do not edit `package.json` for this. The workflow sets the installer version from the tag.
 
@@ -119,7 +119,7 @@ Checked in `apps/laptop/src/release/packaged-shell.test.ts` and the shell config
 - The window loads the Vite build from the app bundle (`frontendDist`), not `http://localhost:1420`. That address is only `devUrl`, used by `tauri dev`.
 - A production build sets `import.meta.env.DEV` to false, so the mock-site controls are not in the window and the default site is `https://midwesthardenduro.com`.
 - Google sign-in does not run inside the webview. The app opens the system browser and a Rust listener on `127.0.0.1` receives `http://127.0.0.1:<port>/callback`. The content-security policy does not have to allow the website. The native HTTP client does, and its capability list includes `https://midwesthardenduro.com/*`, `https://*.midwesthardenduro.com/*`, and `https://base44.app/*` (login), plus loopback for the dev mock.
-- The vault commands `credential_get_vault` and `credential_set_vault` are in the capability, so emergency contacts can be unlocked in the installed app. The key stays in Credential Manager entry `rider-private-key`.
+- The vault commands `credential_get_vault` and `credential_set_vault` are in the capability, so emergency contacts can be unlocked in the installed app. The key stays in Credential Manager entry `rider-private-key`. `keyring` is built with `windows-native`. Without that feature the packaged app's credential commands use an in-memory mock: the token looks saved, then the next read finds nothing.
 - WebView2 is embedded as the bootstrapper (`embedBootstrapper`, silent). The installer is about 2 MB larger and can install the runtime when the laptop is online and does not already have it.
 
 ## Checklist on a Windows laptop

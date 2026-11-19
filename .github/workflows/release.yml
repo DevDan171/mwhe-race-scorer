@@ -48,7 +48,7 @@ jobs:
           MWHE Race Scorer ${GITHUB_REF_NAME}
 
           Attached:
-          - The Windows installer (NSIS, per-user). Download the file whose name ends in _x64-setup.exe.
+          - The Windows installer (NSIS, per-user). Download MWHE-Race-Scorer_<version>_x64-setup.exe.
           - Vite web bundles for the laptop and the station, for development.
 
           The installer is unsigned unless the Azure Artifact Signing secrets are set.
@@ -102,7 +102,7 @@ jobs:
           body: |
             ## MWHE Race Scorer ${{ github.ref_name }}
 
-            Download the Windows installer (the file ending in `_x64-setup.exe`). It installs for the current Windows user, adds a Start menu shortcut and a desktop shortcut, and does not need an administrator password.
+            Download the Windows installer (`MWHE-Race-Scorer_<version>_x64-setup.exe`). It installs for the current Windows user, adds a Start menu shortcut and a desktop shortcut, and does not need an administrator password.
 
             Windows will warn that the app is unrecognized while it is unsigned. On the blue window, choose **More info**, then **Run anyway**. The steps are in [docs/install-windows.md](https://github.com/DevDan171/mwhe-race-scorer/blob/${{ github.ref_name }}/docs/install-windows.md).
 
@@ -110,3 +110,21 @@ jobs:
 
             Web bundles for development are attached. The Android APK is not built. Details are in `NATIVE_BUILDS.txt`.
             Tags use semantic versioning: `vMAJOR.MINOR.PATCH`.
+
+      - name: Checkout the release scripts
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify the updater download URL
+        run: pnpm --filter @mwhe/laptop exec tsx src/release/verify-published-update.ts

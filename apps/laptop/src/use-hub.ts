@@ -35,6 +35,10 @@ export interface HubApi {
   events: Record<string, RaceDayState>;
   activeEventId: string | null;
   pendingUploads: number;
+  /** Events whose emergency contacts could not be unlocked. */
+  lockedContactEventIds: string[];
+  /** Shown until those events are re-imported. Null when nothing is locked. */
+  lockedContactNote: string | null;
   notice: string | null;
   dismissNotice: () => void;
   signIn: (input: { email: string; password: string }) => Promise<void>;

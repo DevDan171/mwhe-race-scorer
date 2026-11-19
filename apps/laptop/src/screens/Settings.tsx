@@ -74,7 +74,7 @@ export function Settings() {
       {google.error ? <Banner tone="error">{google.error}</Banner> : null}
       <section className="card" style={{ padding: 16 }}>
         <h2>Account</h2>
-        {hub.account ? (
+        {hub.account && hub.hasToken ? (
           <>
             <p>
               {hub.account.name} · {hub.account.email} · {hub.account.role}

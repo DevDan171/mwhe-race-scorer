@@ -96,7 +96,7 @@ export function App() {
       <div className="workspace">
         <header className="topbar">
           <OfflinePill />
-          {hub.account ? (
+          {hub.account && hub.hasToken ? (
             <SignedInPill name={hub.account.name} role={roleLabel(hub.account.role)} />
           ) : (
             <button
@@ -110,6 +110,11 @@ export function App() {
         </header>
         <UpdatePrompt />
         <main>
+          {hub.lockedContactNote ? (
+            <div className="stack" style={{ marginBottom: 12 }}>
+              <Banner tone="info">{hub.lockedContactNote}</Banner>
+            </div>
+          ) : null}
           {hub.notice ? (
             <div className="stack" style={{ marginBottom: 12 }}>
               <Banner tone="info">{hub.notice}</Banner>

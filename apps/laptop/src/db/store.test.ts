@@ -14,7 +14,7 @@ import {
 import { startMockSite } from "@mwhe/core/mock";
 import { describe, expect, it } from "vitest";
 
-import { createMemoryCredentialStore } from "../auth/credentials";
+import { createMemoryCredentialStore, type CredentialStore } from "../auth/credentials";
 import {
   completeGoogleSignIn,
   completeSignIn,
@@ -72,6 +72,7 @@ describe("hub sqlite", () => {
       await createSqlJsExecutor({ bytes: db.exportBytes() }),
     );
     const loaded = await reopened.load();
+    expect(loaded.lockedContactEventIds).toEqual([]);
     expect(loaded.operatorName).toBe("Dana Director");
     expect(loaded.appId).toBe(MOCK_APP_ID);
     expect(loaded.account?.email).toBe(MOCK_DIRECTOR.email);
@@ -131,6 +132,26 @@ describe("private fields on disk", () => {
     expect(dumped.includes("Dana Hendricks")).toBe(false);
     const loaded = await store.load();
     expect(loaded.state?.race.registrations[0]?.phone).toBeUndefined();
+  });
+
+  it("keeps the list of events whose emergency contacts could not be unlocked", async () => {
+    const db = await createSqlJsExecutor();
+    const store = createHubStore(db);
+    await store.save({
+      operatorName: null,
+      baseUrl: "https://midwesthardenduro.com",
+      appId: MOCK_APP_ID,
+      account: null,
+      state: importRacePackage({
+        racePackage: createSampleRacePackage(),
+        downloadedAt: "2026-09-11T18:00:00.000Z",
+      }),
+      lockedContactEventIds: ["gnaw-bone-2026"],
+    });
+    const loaded = await createHubStore(
+      await createSqlJsExecutor({ bytes: db.exportBytes() }),
+    ).load();
+    expect(loaded.lockedContactEventIds).toEqual(["gnaw-bone-2026"]);
   });
 });
 
@@ -251,6 +272,38 @@ describe("package download", () => {
         eventId: SAMPLE_EVENT_ID,
       });
       expect(racePackage.event.id).toBe(SAMPLE_EVENT_ID);
+    } finally {
+      await site.close();
+    }
+  });
+
+  it("refuses sign-in when the credential store drops the token", async () => {
+    const site = await startMockSite();
+    const credentials: CredentialStore = {
+      async readToken() {
+        return null;
+      },
+      async writeToken() {},
+      async clearToken() {},
+      async readVaultKey() {
+        return null;
+      },
+      async writeVaultKey() {},
+    };
+    try {
+      await expect(
+        completeSignIn(credentials, {
+          baseUrl: site.url,
+          appId: MOCK_APP_ID,
+          email: MOCK_DIRECTOR.email,
+          password: MOCK_DIRECTOR.password,
+        }),
+      ).rejects.toMatchObject({
+        name: "SignInError",
+        code: "credential_store",
+        message: expect.stringContaining("Windows Credential Manager"),
+      });
+      expect(await credentials.readToken()).toBeNull();
     } finally {
       await site.close();
     }

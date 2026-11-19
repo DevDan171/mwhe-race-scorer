@@ -8,7 +8,7 @@ The app is **MWHE Race Scorer**. After it is installed it works offline. It only
 
 1. Open the [Releases](https://github.com/DevDan171/mwhe-race-scorer/releases) page.
 2. Open the newest release, such as `v0.1.0`.
-3. Download the file whose name ends in `_x64-setup.exe`. It looks like `MWHE Race Scorer_0.1.0_x64-setup.exe`.
+3. Download the file whose name ends in `_x64-setup.exe`. It looks like `MWHE-Race-Scorer_0.2.1_x64-setup.exe`.
 
 Leave the other files. Those are for development.
 
@@ -43,6 +43,8 @@ Races, riders, and emergency contacts are not stored in the program folder. They
 `%APPDATA%\com.midwesthardenduro.scorer\mwhe-hub.db`
 
 The sign-in token and the key that locks emergency contacts are in Windows Credential Manager, under the name **MWHE Race Scorer**. The emergency key is the entry `rider-private-key`. Signing out of the app removes the sign-in token only. It does not remove races or the emergency key.
+
+Installed copies before 0.2.1 did not keep that emergency key after the app closed. The races stay. Emergency contacts that came from the site come back when you re-import the event. Emergency contacts for riders added on this laptop do not. Enter those again.
 
 Close the app and open it again. The event you imported is still there.
 

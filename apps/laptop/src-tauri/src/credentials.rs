@@ -1,5 +1,9 @@
 use keyring::Entry;
 
+/// Windows Credential Manager service name. Each command builds a new `Entry`.
+/// That only round-trips when `keyring` is built with `windows-native`. The
+/// mock store used without that feature keeps the secret on the `Entry` value
+/// and drops it as soon as the command returns.
 const SERVICE: &str = "MWHE Race Scorer";
 const ACCOUNT: &str = "site-bearer-token";
 /// AES-256 key for rider contact fields. Not the sign-in token.

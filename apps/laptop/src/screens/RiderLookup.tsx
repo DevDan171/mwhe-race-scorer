@@ -81,7 +81,18 @@ export function RiderLookup() {
       {number.trim() && !match ? (
         <Banner tone="info">No rider with that number is on this event.</Banner>
       ) : null}
-      {match ? <EmergencyCard rider={match} races={hub.state.race.races} /> : null}
+      {match ? (
+        <EmergencyCard
+          rider={match}
+          races={hub.state.race.races}
+          addedOnLaptop={
+            hub.lockedContactEventIds.includes(hub.state.race.event.id) &&
+            hub.state.dayOfRegistrations.some(
+              (entry) => entry.number === match.riderNumber,
+            )
+          }
+        />
+      ) : null}
       {!hub.vaultReady ? (
         <Banner tone="info">Emergency info is still unlocking.</Banner>
       ) : null}
@@ -92,9 +103,11 @@ export function RiderLookup() {
 function EmergencyCard({
   rider,
   races,
+  addedOnLaptop,
 }: {
   rider: EventRegistration;
   races: { id: string; name: string }[];
+  addedOnLaptop: boolean;
 }) {
   const emergency = hasEmergencyContact(rider);
   const raceBits = races
@@ -144,6 +157,11 @@ function EmergencyCard({
                 <strong>{rider.emergencyContactRelation || "Not on file"}</strong>
               </p>
             </>
+          ) : addedOnLaptop ? (
+            <Banner tone="info">
+              This rider was added on this laptop. Their emergency contact was only stored
+              here and cannot be restored. Enter it again.
+            </Banner>
           ) : (
             <Banner tone="info">No emergency contact on file for this rider.</Banner>
           )}

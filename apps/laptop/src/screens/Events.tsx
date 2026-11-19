@@ -27,7 +27,6 @@ export function Events() {
   const [incoming, setIncoming] = useState<RacePackage | null>(null);
 
   async function refresh() {
-    if (!hub.hasToken) return;
     setError(null);
     setBusy(true);
     try {
@@ -127,15 +126,17 @@ export function Events() {
           <button
             type="button"
             className="btn"
-            disabled={busy || !hub.hasToken}
+            disabled={busy}
+            aria-busy={busy}
             onClick={() => void refresh()}
           >
-            Refresh list
+            {busy ? "Refreshing…" : "Refresh list"}
           </button>
         </div>
       </header>
+      {busy ? <Banner tone="info">Loading events from the site…</Banner> : null}
       {error ? <Banner tone="error">{error}</Banner> : null}
-      {!hub.hasToken ? (
+      {!hub.hasToken && !error && !busy ? (
         <Banner tone="info">
           Sign in to load the event list. Events already imported stay on this laptop.
         </Banner>
@@ -202,7 +203,7 @@ export function Events() {
             })}
           </tbody>
         </table>
-        {visible.length === 0 ? (
+        {!busy && !error && visible.length === 0 ? (
           <p className="hint" style={{ padding: 16 }}>
             No events match.
           </p>
