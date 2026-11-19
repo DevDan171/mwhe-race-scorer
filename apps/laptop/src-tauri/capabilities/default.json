@@ -7,6 +7,15 @@
     "core:default",
     "allow-credential-commands",
     "allow-sign-in-commands",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://midwesthardenduro.com/*" },
+        { "url": "https://*.midwesthardenduro.com/*" },
+        { "url": "http://127.0.0.1:*/*" },
+        { "url": "http://localhost:*/*" }
+      ]
+    },
     "sql:default",
     "sql:allow-load",
     "sql:allow-execute",

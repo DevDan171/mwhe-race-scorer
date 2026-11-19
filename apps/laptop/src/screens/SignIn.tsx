@@ -22,6 +22,7 @@ import { isTauri } from "../platform";
 import { useAppVersion } from "../use-app-version";
 import { useHub } from "../use-hub";
 import { Banner, Field, Logo, OfflinePill } from "../ui";
+import { SignInLink } from "./SignInLink";
 import { UpdatePrompt } from "./UpdatePrompt";
 
 const dev = import.meta.env.DEV;
@@ -37,6 +38,7 @@ export function SignIn() {
   const [signedInName, setSignedInName] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [typed, setTyped] = useState("");
+  const [pageUrl, setPageUrl] = useState<string | null>(null);
   const googleAbort = useRef<AbortController | null>(null);
   const typedCode = useRef<ManualSignInCode | null>(null);
 
@@ -58,6 +60,7 @@ export function SignIn() {
     setError(null);
     setShowCode(false);
     setSignedInName(null);
+    setPageUrl(null);
     googleAbort.current?.abort();
     const abort = new AbortController();
     googleAbort.current = abort;
@@ -67,7 +70,7 @@ export function SignIn() {
     try {
       const state = createSignInState();
       let callbackUrl: string | null = null;
-      let loopback: Promise<string> | null = null;
+      let waitForCode: (() => Promise<string>) | null = null;
       if (isTauri()) {
         const listener = await startLoopbackSignIn(state);
         if (abort.signal.aborted) {
@@ -75,25 +78,31 @@ export function SignIn() {
           return;
         }
         callbackUrl = listener.callbackUrl;
-        loopback = listener.code;
+        waitForCode = listener.waitForCode;
         abort.signal.addEventListener("abort", () => listener.cancel());
       }
-      const pageUrl = buildLaptopSignInPageUrl({
+      const page = buildLaptopSignInPageUrl({
         siteOrigin: hub.baseUrl,
         state,
         callbackUrl,
       });
+      setPageUrl(page);
       const message = watchSignInMessage({
-        siteOrigin: new URL(pageUrl).origin,
+        siteOrigin: new URL(page).origin,
         state,
         signal: abort.signal,
       });
-      void openSignInPage(pageUrl).catch((caught: unknown) => {
+      try {
+        await openSignInPage(page);
+      } catch (caught) {
         if (!abort.signal.aborted) setError(messageOf(caught));
-      });
+      }
       const code = await Promise.race([
         message,
-        takeSignInCode([loopback, manual.promise], abort.signal),
+        takeSignInCode(
+          [waitForCode ? waitForCode() : null, manual.promise],
+          abort.signal,
+        ),
       ]);
       await hub.signInWithGoogle({ code, state });
       setSignedInName(hub.account?.name ?? "your account");
@@ -109,6 +118,7 @@ export function SignIn() {
     googleAbort.current?.abort();
     setGoogleBusy(false);
     setShowCode(false);
+    setPageUrl(null);
   }
 
   return (
@@ -125,6 +135,8 @@ export function SignIn() {
             {googleBusy ? (
               <GoogleWait
                 error={error}
+                pageUrl={pageUrl}
+                onOpenError={setError}
                 signedInName={signedInName}
                 showCode={showCode}
                 typed={typed}
@@ -225,6 +237,8 @@ export function SignIn() {
 
 function GoogleWait({
   error,
+  pageUrl,
+  onOpenError,
   signedInName,
   showCode,
   typed,
@@ -234,6 +248,8 @@ function GoogleWait({
   onCancel,
 }: {
   error: string | null;
+  pageUrl: string | null;
+  onOpenError: (message: string) => void;
   signedInName: string | null;
   showCode: boolean;
   typed: string;
@@ -246,10 +262,11 @@ function GoogleWait({
     <>
       <h2>Finish signing in in your browser</h2>
       <p className="lede">
-        A browser window opened on midwesthardenduro.com. Choose your Google account
-        there. Nothing to copy or type here.
+        Choose your Google account on the sign-in page. This screen continues when that
+        finishes. You can also type the code below.
       </p>
       {error ? <Banner tone="error">{error}</Banner> : null}
+      {pageUrl ? <SignInLink url={pageUrl} onError={onOpenError} /> : null}
       <div className="wait-box">
         <i className="spinner" aria-hidden="true" />
         <div>

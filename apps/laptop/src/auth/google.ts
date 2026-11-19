@@ -122,21 +122,25 @@ export async function openSignInPage(url: string): Promise<void> {
   const opened = window.open(url, "mwhe-google-sign-in");
   if (!opened) {
     throw new Error(
-      "The browser blocked the sign-in window. Allow pop-ups, or choose Enter a code instead.",
+      "The browser blocked the sign-in window. Use the sign-in link on this screen, or choose Enter a code instead.",
     );
   }
 }
 
+/**
+ * Starts the loopback listener. Call `waitForCode` only after the sign-in
+ * page has been opened, so a slow wait cannot sit in front of that open.
+ */
 export async function startLoopbackSignIn(state: string): Promise<{
   callbackUrl: string;
-  code: Promise<string>;
+  waitForCode: () => Promise<string>;
   cancel: () => void;
 }> {
   const { invoke } = await import("@tauri-apps/api/core");
   const port = await invoke<number>("start_sign_in_callback", { state });
   return {
     callbackUrl: loopbackCallbackUrl(port),
-    code: invoke<string>("wait_sign_in_callback"),
+    waitForCode: () => invoke<string>("wait_sign_in_callback"),
     cancel: () => {
       void invoke("cancel_sign_in_callback");
     },

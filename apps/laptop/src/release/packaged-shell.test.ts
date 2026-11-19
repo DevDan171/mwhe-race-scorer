@@ -85,6 +85,7 @@ describe("packaged laptop shell", () => {
       expect.arrayContaining([
         "allow-credential-commands",
         "allow-sign-in-commands",
+        "opener:allow-open-url",
         "sql:allow-load",
         "sql:allow-execute",
         "updater:default",
@@ -92,6 +93,15 @@ describe("packaged laptop shell", () => {
         "http:default",
       ]),
     );
+    const opener = caps.permissions.find(
+      (permission) =>
+        typeof permission !== "string" &&
+        permission.identifier === "opener:allow-open-url",
+    );
+    expect(
+      opener && typeof opener !== "string" ? opener.allow.map((item) => item.url) : [],
+    ).toEqual(expect.arrayContaining([`${LIVE_SITE_ORIGIN}/*`, "http://127.0.0.1:*/*"]));
+
     const http = caps.permissions.find(
       (permission) =>
         typeof permission !== "string" && permission.identifier === "http:default",

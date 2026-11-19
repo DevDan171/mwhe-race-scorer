@@ -22,10 +22,15 @@ enum CallbackEvent {
 
 static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
 
+/// Validates the page, then asks the system to open it.
+/// The open itself runs off the UI thread. `that_detached` returns as soon as
+/// the browser is launched, so this command cannot sit on the window thread.
 #[tauri::command]
-pub(crate) fn open_sign_in_page(url: String) -> Result<(), String> {
+pub(crate) async fn open_sign_in_page(url: String) -> Result<(), String> {
     validate_page_url(&url)?;
-    open_browser(&url)
+    tauri::async_runtime::spawn_blocking(move || open_in_browser(&url))
+        .await
+        .map_err(|_| browser_open_error())?
 }
 
 #[tauri::command]
@@ -55,8 +60,12 @@ pub(crate) fn start_sign_in_callback(state: String) -> Result<u16, String> {
     Ok(port)
 }
 
+/// Waits for the loopback code without blocking the window.
+/// A synchronous command runs on the UI thread. `recv_timeout` here used to
+/// freeze the whole app for up to ten minutes, so the browser-open command
+/// queued behind it never ran and Cancel could not be clicked.
 #[tauri::command]
-pub(crate) fn wait_sign_in_callback() -> Result<String, String> {
+pub(crate) async fn wait_sign_in_callback() -> Result<String, String> {
     let events = {
         let mut slot = PENDING
             .lock()
@@ -72,7 +81,10 @@ pub(crate) fn wait_sign_in_callback() -> Result<String, String> {
         });
         events
     };
-    match events.recv_timeout(WAIT) {
+    let waited = tauri::async_runtime::spawn_blocking(move || events.recv_timeout(WAIT))
+        .await
+        .map_err(|_| "Google sign-in did not finish. Try again.".to_string())?;
+    match waited {
         Ok(CallbackEvent::Code(code)) => {
             let _ = cancel_sign_in_callback();
             Ok(code)
@@ -350,38 +362,13 @@ fn validate_page_url(url: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn open_browser(url: &str) -> Result<(), String> {
-    let mut command = browser_command(url);
-    command
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map(|_| ())
-        .map_err(|_| {
-            "The laptop could not open the browser. Use the link on Race Prep.".to_string()
-        })
+fn browser_open_error() -> String {
+    "The laptop could not open the browser. Use the sign-in link on this screen.".to_string()
 }
 
-#[cfg(target_os = "windows")]
-fn browser_command(url: &str) -> std::process::Command {
-    let mut command = std::process::Command::new("cmd");
-    command.arg("/C").arg(format!("start \"\" \"{url}\""));
-    command
-}
-
-#[cfg(target_os = "macos")]
-fn browser_command(url: &str) -> std::process::Command {
-    let mut command = std::process::Command::new("open");
-    command.arg(url);
-    command
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-fn browser_command(url: &str) -> std::process::Command {
-    let mut command = std::process::Command::new("xdg-open");
-    command.arg(url);
-    command
+/// ShellExecute / xdg-open, detached. Does not wait for the browser to exit.
+fn open_in_browser(url: &str) -> Result<(), String> {
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|_| browser_open_error())
 }
 
 #[cfg(test)]
