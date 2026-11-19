@@ -25,20 +25,24 @@ You do not edit `package.json` for this. The workflow sets the installer version
 
 ## Try a build before the tag
 
-Open the pull request, then **Checks → Windows installer** (or the Actions run). Download the artifact named `mwhe-race-scorer-windows`. That file is the same kind of installer. It is version `0.1.0` unless the run was a tag.
+Open the pull request, then **Checks → Windows installer** (or the Actions run). Download the artifact named `mwhe-race-scorer-windows`. That file is the same kind of installer. Its version is the one in `tauri.conf.json` unless the run was a tag.
 
 ## Updater keys
 
-The updater has its own minisign key. It is not the Windows code-signing certificate. The public key is in `apps/laptop/src-tauri/tauri.conf.json` under `plugins.updater.pubkey`. The private key and its password are GitHub Actions secrets:
+The updater has its own minisign key. It is not the Windows code-signing certificate. The public key is already in `apps/laptop/src-tauri/tauri.conf.json` under `plugins.updater.pubkey`. Its key id is `E92861B175B03B52`. The private key and its password are GitHub Actions secrets, and they are not in the repo:
 
 | Secret                               | What to paste                                                |
 | ------------------------------------ | ------------------------------------------------------------ |
 | `TAURI_SIGNING_PRIVATE_KEY`          | The whole private key file, including the first comment line |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | The password you chose when generating the key               |
 
-Until both the public key and `TAURI_SIGNING_PRIVATE_KEY` are in place, the installer still builds. The workflow skips `latest.json` and the `.sig` file. Installed copies then have nothing to apply.
+The installer still builds when those secrets are missing. The workflow then skips `latest.json` and the `.sig` file, so installed copies have nothing to apply. When both secrets are saved, a version tag attaches `latest.json` and the `.sig` next to the setup exe. The app reads:
 
-Do this once, on your own PC. The private key never goes in git.
+`https://github.com/DevDan171/mwhe-race-scorer/releases/latest/download/latest.json`
+
+Save both secrets before you tag `v0.2.0`. A build of 0.2.0 is the first one that can verify later releases. Copies from 0.1.1 and earlier do not have this public key, so they will not update themselves.
+
+To rotate the key later, generate a new pair on your own PC. The private key never goes in git.
 
 1. Install Node 22 and pnpm if this PC does not have them yet. This is only for generating the key. Race directors do not do this.
 2. Open PowerShell in the repo:
@@ -61,9 +65,8 @@ pnpm --filter @mwhe/laptop exec tauri signer generate -w "$env:USERPROFILE\.taur
 node -e "const fs=require('fs'); const p=fs.readFileSync(process.env.USERPROFILE+'\\.tauri\\mwhe-race-scorer.key.pub','utf8').trim(); console.log(JSON.stringify(p));"
 ```
 
-6. In `apps/laptop/src-tauri/tauri.conf.json`, replace `"REPLACE_WITH_THE_MINISIGN_PUBLIC_KEY"` — quotes included — with the line the command printed.
-7. Commit that `tauri.conf.json` change and push it. Do not commit the `.key` file. `.gitignore` already ignores `*.key`.
-8. On GitHub open **Settings → Secrets and variables → Actions → New repository secret**.
+6. Replace `plugins.updater.pubkey` in `apps/laptop/src-tauri/tauri.conf.json` with that line, quotes included. Commit that change. Do not commit the `.key` file. `.gitignore` already ignores `*.key`.
+7. On GitHub open **Settings → Secrets and variables → Actions → New repository secret**.
    - Name: `TAURI_SIGNING_PRIVATE_KEY`
    - Value: the whole private key. In PowerShell:
 
@@ -71,17 +74,9 @@ node -e "const fs=require('fs'); const p=fs.readFileSync(process.env.USERPROFILE
 Get-Content -Raw "$env:USERPROFILE\.tauri\mwhe-race-scorer.key" | Set-Clipboard
 ```
 
-Paste that into the secret and save. Then create `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` with the password from step 3.
+Paste that into the secret and save. Then create `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` with the password from step 3. Tag the next release only after the new public key is on `main`.
 
-9. Tag the next release only after that commit is on `main`. The workflow refuses to sign updates while the placeholder public key is still in the file.
-
-The first installed build that contains the real public key is the first one that can update itself. A copy built before that key was committed cannot check a later signature. Install that first keyed build once on the race laptop. Later tags can then use **Update available**.
-
-`latest.json` on the GitHub Release is what the app downloads from:
-
-`https://github.com/DevDan171/mwhe-race-scorer/releases/latest/download/latest.json`
-
-The repository has to stay public, or that address has to be downloadable without a login. The app does not send a GitHub token.
+The repository has to stay public, or `latest.json` has to be downloadable without a login. The app does not send a GitHub token. It does not check, download, or prompt while Scoring is open or while a planned start is still inside that race’s window. A check that cannot reach GitHub changes nothing.
 
 ## Azure Artifact Signing later
 

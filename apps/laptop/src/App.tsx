@@ -50,7 +50,12 @@ export function App() {
   }
 
   if (signedOut && !hasEvents) {
-    return <SignIn />;
+    return (
+      <>
+        <UpdatePrompt />
+        <SignIn />
+      </>
+    );
   }
 
   return (

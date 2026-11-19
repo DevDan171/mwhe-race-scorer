@@ -48,7 +48,13 @@ Close the app and open it again. The event you imported is still there.
 
 ## Update
 
-Install a newer `_x64-setup.exe` the same way, over the copy that is already there. The races stay. You can also use **Update available** inside the app once that has been turned on for releases. That button installs the new version and reopens the app. It does not wipe the database.
+When the laptop is online, the app looks for a newer release at startup and again every few hours. It does not look, and it does not ask, while a race is underway: the Scoring screen is open, or a planned start is still inside that race’s window. A failed check stays quiet. Scoring keeps working with no network.
+
+If a newer version exists, a banner says **Version X.Y.Z is available**. **Update now** downloads it, shows the progress, installs it, and restarts. **Later** hides the banner until the next time you open the app. Races stay on the laptop. The installer is the same per-user install and does not remove the database.
+
+**Settings → About → Check for updates** says whether this copy is up to date, that a version is available, that it is downloading, or why a check failed. It waits, and says so, while a race is underway.
+
+You can also install a newer `_x64-setup.exe` over the copy that is already there. The races stay either way.
 
 The version number is at the bottom of the sidebar, on the sign-in screen, and under **Settings → About**.
 
