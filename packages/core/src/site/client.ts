@@ -159,21 +159,7 @@ export async function getRacePackage(
   }
 
   const body: unknown = await readJson(response);
-  if (!response.ok || !isOk(body)) {
-    const parsed = siteErrorSchema.safeParse(body);
-    if (parsed.success) {
-      throw new SiteApiError(
-        response.status || 500,
-        parsed.data.error,
-        parsed.data.message,
-      );
-    }
-    throw new SiteApiError(
-      response.status || 500,
-      "bad_response",
-      `The site returned HTTP ${response.status || "error"} without an error envelope`,
-    );
-  }
+  if (!response.ok || !isOk(body)) throw errorFrom(response, body);
 
   const parsed = getRacePackageResponseSchema.safeParse(body);
   if (!parsed.success) {
@@ -585,19 +571,26 @@ function functionUrl(baseUrl: string, pathname: string): URL {
 }
 
 function errorFrom(response: Response, body: unknown): SiteApiError {
+  const status = response.status || 500;
   const parsed = siteErrorSchema.safeParse(body);
   if (parsed.success) {
     return new SiteApiError(
-      response.status || 500,
+      status,
       parsed.data.error,
-      parsed.data.message,
+      withHttpStatus(parsed.data.message, status),
     );
   }
   return new SiteApiError(
-    response.status || 500,
+    status,
     "bad_response",
-    `The site returned HTTP ${response.status || "error"} without an error envelope`,
+    `The site returned HTTP ${status} without an error envelope`,
   );
+}
+
+function withHttpStatus(message: string, status: number): string {
+  const detail = message.trim();
+  if (detail.includes(`HTTP ${status}`)) return detail;
+  return `${detail} (HTTP ${status})`;
 }
 
 function authUrl(siteBaseUrl: string, appId: string, kind: "login" | "me"): URL {
@@ -710,5 +703,15 @@ function networkMessage(error: unknown): string {
   if (error instanceof Error && error.name === "AbortError") {
     return "The site did not answer. A race already on this laptop still works offline";
   }
-  return error instanceof Error ? error.message : "Network request failed";
+  const detail =
+    error instanceof Error && error.message.trim()
+      ? error.message.trim()
+      : "Network request failed";
+  if (
+    /url not allowed/i.test(detail) ||
+    /not allowed on the configured scope/i.test(detail)
+  ) {
+    return `The laptop blocked this request before it was sent. ${detail}`;
+  }
+  return `The site could not be reached. The network may be down. ${detail}`;
 }

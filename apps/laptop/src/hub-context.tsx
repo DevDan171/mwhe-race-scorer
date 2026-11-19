@@ -224,6 +224,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
       signedIn: SiteAccount,
     ) => {
       if (epoch.current !== generation) return;
+      setNotice(null);
       setHasToken(true);
       await persist({
         ...record.current,
@@ -326,8 +327,12 @@ export function HubProvider({ children }: { children: ReactNode }) {
     const opened = backend.current;
     if (!opened) throw new Error("The race database is not open");
     const token = await opened.credentials.readToken();
-    if (!token)
-      throw new SignInError("signed_out", "Sign in to load events from the site.");
+    if (!token) {
+      throw new SignInError(
+        "signed_out",
+        "No sign-in token is saved on this laptop, so events cannot be loaded from the site. Sign in again.",
+      );
+    }
     try {
       return await fetchEventList({
         baseUrl: record.current.baseUrl,

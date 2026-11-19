@@ -1,8 +1,8 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { buildLatestJson } from "./latest-json";
+import { buildLatestJson, renameReleaseInstallers } from "./latest-json";
 import { versionFromGitRef } from "./windows-build-config";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -10,7 +10,21 @@ const bundleDir = resolve(
   process.argv[2] ?? join(here, "../../src-tauri/target/release/bundle/nsis"),
 );
 
-if (!process.env.GITHUB_REF?.startsWith("refs/tags/")) {
+const isTag = process.env.GITHUB_REF?.startsWith("refs/tags/") ?? false;
+
+if (!existsSync(bundleDir)) {
+  if (!isTag) {
+    console.log("latest.json: skipped (no installer directory).");
+    process.exit(0);
+  }
+  console.error(`latest.json: installer directory not found: ${bundleDir}`);
+  process.exit(1);
+}
+
+renameReleaseInstallers(bundleDir);
+const names = readdirSync(bundleDir);
+
+if (!isTag) {
   console.log("latest.json: skipped (this build is not a version tag).");
   process.exit(0);
 }
@@ -18,14 +32,6 @@ if (!process.env.GITHUB_REF?.startsWith("refs/tags/")) {
 const version = versionFromGitRef(process.env.GITHUB_REF, process.env.GITHUB_REF_NAME);
 if (!version || !process.env.GITHUB_REF_NAME || !process.env.GITHUB_REPOSITORY) {
   console.error("latest.json: the tag or repository name is missing.");
-  process.exit(1);
-}
-
-let names: string[];
-try {
-  names = readdirSync(bundleDir);
-} catch {
-  console.error(`latest.json: installer directory not found: ${bundleDir}`);
   process.exit(1);
 }
 
@@ -45,6 +51,10 @@ if (installers.length !== 1 || signatures.length !== 1) {
 }
 
 const installerFileName = installers[0];
+if (installerFileName?.includes(" ")) {
+  console.error(`latest.json: refusing a spaced installer name: ${installerFileName}`);
+  process.exit(1);
+}
 const signatureName = signatures[0];
 if (
   !installerFileName ||

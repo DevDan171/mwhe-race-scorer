@@ -11,6 +11,7 @@ import {
   getRacePackage,
   getRacePackageResponseSchema,
   getSignedInUser,
+  listEvents,
   signInWithPassword,
   SiteApiError,
 } from "./client.js";
@@ -344,6 +345,70 @@ describe("signInWithPassword", () => {
           throw new Error("offline");
         },
       }),
-    ).rejects.toMatchObject({ status: 0, code: "network" });
+    ).rejects.toMatchObject({
+      status: 0,
+      code: "network",
+      message: expect.stringContaining("network may be down"),
+    });
+  });
+});
+
+describe("listEvents failures", () => {
+  const baseUrl = "https://midwesthardenduro.com";
+
+  it("includes the HTTP status instead of a signed-out message", async () => {
+    await expect(
+      listEvents({
+        baseUrl,
+        token: "admin-token",
+        fetch: async () =>
+          new Response(
+            JSON.stringify({
+              ok: false,
+              error: "unauthorized",
+              message: "Sign in required",
+            }),
+            { status: 401 },
+          ),
+      }),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "unauthorized",
+      message: "Sign in required (HTTP 401)",
+    });
+  });
+
+  it("says when the laptop blocked the request", async () => {
+    await expect(
+      listEvents({
+        baseUrl,
+        token: "admin-token",
+        fetch: async () => {
+          throw new Error(
+            "url not allowed on the configured scope: https://midwesthardenduro.com/functions/listEvents",
+          );
+        },
+      }),
+    ).rejects.toMatchObject({
+      status: 0,
+      code: "network",
+      message: expect.stringContaining("blocked this request"),
+    });
+  });
+
+  it("says when the network is down", async () => {
+    await expect(
+      listEvents({
+        baseUrl,
+        token: "admin-token",
+        fetch: async () => {
+          throw new TypeError("Failed to fetch");
+        },
+      }),
+    ).rejects.toMatchObject({
+      status: 0,
+      code: "network",
+      message: "The site could not be reached. The network may be down. Failed to fetch",
+    });
   });
 });

@@ -96,7 +96,7 @@ export function App() {
       <div className="workspace">
         <header className="topbar">
           <OfflinePill />
-          {hub.account ? (
+          {hub.account && hub.hasToken ? (
             <SignedInPill name={hub.account.name} role={roleLabel(hub.account.role)} />
           ) : (
             <button

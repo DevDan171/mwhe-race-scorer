@@ -8,7 +8,7 @@ The app is **MWHE Race Scorer**. After it is installed it works offline. It only
 
 1. Open the [Releases](https://github.com/DevDan171/mwhe-race-scorer/releases) page.
 2. Open the newest release, such as `v0.1.0`.
-3. Download the file whose name ends in `_x64-setup.exe`. It looks like `MWHE Race Scorer_0.1.0_x64-setup.exe`.
+3. Download the file whose name ends in `_x64-setup.exe`. It looks like `MWHE-Race-Scorer_0.2.1_x64-setup.exe`.
 
 Leave the other files. Those are for development.
 

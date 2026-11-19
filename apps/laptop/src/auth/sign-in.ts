@@ -14,10 +14,10 @@ import {
 import type { CredentialStore } from "./credentials.js";
 
 export class SignInError extends Error {
-  readonly code: "forbidden_role" | "session_expired" | "signed_out";
+  readonly code: "forbidden_role" | "session_expired" | "signed_out" | "credential_store";
 
   constructor(
-    code: "forbidden_role" | "session_expired" | "signed_out",
+    code: "forbidden_role" | "session_expired" | "signed_out" | "credential_store",
     message: string,
   ) {
     super(message);
@@ -77,6 +77,14 @@ async function keepHubSession(
     throw error;
   }
   await credentials.writeToken(session.token);
+  const stored = await credentials.readToken();
+  if (stored !== session.token) {
+    await credentials.clearToken();
+    throw new SignInError(
+      "credential_store",
+      "The sign-in token was not saved in Windows Credential Manager. The event list cannot load until it is. Sign in again.",
+    );
+  }
   return session.account;
 }
 

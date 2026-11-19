@@ -123,6 +123,15 @@ describe("packaged laptop shell", () => {
     );
     expect(credentials).toContain("credential_get_vault");
     expect(credentials).toContain("credential_set_vault");
+    const cargo = readFileSync(resolve(root, "src-tauri/Cargo.toml"), "utf8");
+    expect(cargo).toMatch(/keyring\s*=\s*\{[^}]*"windows-native"/s);
+    const lock = readFileSync(resolve(root, "src-tauri/Cargo.lock"), "utf8");
+    const keyring =
+      /name = "keyring"\nversion = "3\.6\.3"\n[\s\S]*?\ndependencies = \[([\s\S]*?)\]/.exec(
+        lock,
+      );
+    expect(keyring?.[1]).toMatch(/"windows-sys(?: [^"]+)?"/);
+    expect(keyring?.[1]).toContain('"byteorder"');
     const signIn = readFileSync(
       resolve(root, "src-tauri/permissions/sign-in.toml"),
       "utf8",

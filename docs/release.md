@@ -18,7 +18,7 @@ It installs, builds the laptop and station Vite bundles, builds the Windows NSIS
 - `NATIVE_BUILDS.txt`
 - `latest.json` and a `.sig` file, only when the updater private key is set and `plugins.updater.pubkey` is the matching public key
 
-`apps/laptop/src-tauri` wires the window, `tauri-plugin-sql`, `tauri-plugin-http`, the updater, and credential commands backed by the `keyring` crate. Rust 1.90 is required. The Windows workflow installs it. Ubuntu CI does not compile the shell.
+`apps/laptop/src-tauri` wires the window, `tauri-plugin-sql`, `tauri-plugin-http`, the updater, and credential commands backed by the `keyring` crate with the `windows-native` feature. Rust 1.90 is required. The Windows workflow installs it. Ubuntu CI does not compile the shell.
 
 `pnpm --filter @mwhe/laptop build` only typechecks and builds the web bundle. Registration, number checks, roster versions, changelog writes, and the mock-site download are covered by Vitest without Rust.
 

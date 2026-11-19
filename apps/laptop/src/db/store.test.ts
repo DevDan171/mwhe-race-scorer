@@ -14,7 +14,7 @@ import {
 import { startMockSite } from "@mwhe/core/mock";
 import { describe, expect, it } from "vitest";
 
-import { createMemoryCredentialStore } from "../auth/credentials";
+import { createMemoryCredentialStore, type CredentialStore } from "../auth/credentials";
 import {
   completeGoogleSignIn,
   completeSignIn,
@@ -251,6 +251,38 @@ describe("package download", () => {
         eventId: SAMPLE_EVENT_ID,
       });
       expect(racePackage.event.id).toBe(SAMPLE_EVENT_ID);
+    } finally {
+      await site.close();
+    }
+  });
+
+  it("refuses sign-in when the credential store drops the token", async () => {
+    const site = await startMockSite();
+    const credentials: CredentialStore = {
+      async readToken() {
+        return null;
+      },
+      async writeToken() {},
+      async clearToken() {},
+      async readVaultKey() {
+        return null;
+      },
+      async writeVaultKey() {},
+    };
+    try {
+      await expect(
+        completeSignIn(credentials, {
+          baseUrl: site.url,
+          appId: MOCK_APP_ID,
+          email: MOCK_DIRECTOR.email,
+          password: MOCK_DIRECTOR.password,
+        }),
+      ).rejects.toMatchObject({
+        name: "SignInError",
+        code: "credential_store",
+        message: expect.stringContaining("Windows Credential Manager"),
+      });
+      expect(await credentials.readToken()).toBeNull();
     } finally {
       await site.close();
     }

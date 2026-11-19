@@ -1,6 +1,6 @@
 {
   "name": "@mwhe/laptop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Race-day laptop hub. Phase 1 downloads a race package and registers riders offline.",
   "type": "module",

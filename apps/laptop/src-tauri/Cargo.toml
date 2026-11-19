@@ -1,6 +1,6 @@
 [package]
 name = "mwhe-laptop"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "MWHE race-day laptop shell."
 rust-version = "1.90"
@@ -13,7 +13,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-keyring = "3"
+# windows-native is required. keyring 3 has no default features, so a Windows
+# build without it uses an in-memory mock: set_password returns Ok and the
+# next Entry::new reads nothing. Sign-in then looks successful and the event
+# list looks signed out.
+keyring = { version = "3", features = ["windows-native"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
