@@ -10,38 +10,32 @@ export function Changelog() {
   return (
     <div className="stack">
       <header className="page-head">
-        <p className="eyebrow">Audit</p>
-        <h1>Changelog</h1>
-        <p className="lede">
-          Every manual add or change records who, when, the entity, the reason, and the
-          before and after values.
-        </p>
+        <div>
+          <h1>Changelog</h1>
+          <p className="lede">
+            Every add or change records who and when. Contact fields are not written here.
+          </p>
+        </div>
       </header>
       {!hub.state ? (
-        <Banner tone="info">Download a race package on Race Prep first.</Banner>
+        <Banner tone="info">Import an event to see its changelog.</Banner>
       ) : null}
       {hub.state && entries.length === 0 ? (
         <Banner tone="info">
-          No manual changes yet. Registration and race setup will show up here.
+          No changes yet. Registration, race setup, and re-import show up here.
         </Banner>
       ) : null}
-      <div className="stack tight">
+      <div className="stack">
         {[...entries].reverse().map((entry) => (
           <article key={entry.id} className="log">
             <header>
               <strong>{summary(entry)}</strong>
-              <span>{new Date(entry.when).toLocaleString()}</span>
+              <span className="muted">{new Date(entry.when).toLocaleString()}</span>
             </header>
             <p>
-              {entry.who} · {entry.action} · {entry.entity.type} {entry.entity.id}
+              {entry.who} · {entry.action} · {entry.entity.type}
             </p>
-            <p className="reason">{entry.why}</p>
-            <details>
-              <summary>Before and after</summary>
-              <pre>
-                {JSON.stringify({ before: entry.before, after: entry.after }, null, 2)}
-              </pre>
-            </details>
+            <p>{entry.why}</p>
           </article>
         ))}
       </div>
@@ -50,48 +44,22 @@ export function Changelog() {
 }
 
 function summary(entry: ChangelogEntry): string {
-  const before = record(entry.before);
   const after = record(entry.after);
+  const before = record(entry.before);
   if (entry.entity.type === "registration" && entry.action === "add") {
     return `Added ${text(after.name)} #${text(after.number)} (${text(after.class)})`;
   }
-  if (entry.entity.type === "registration" && before.number !== after.number) {
-    return `Number ${text(before.number)} changed to ${text(after.number)}`;
-  }
-  if (entry.entity.type === "registration" && before.class !== after.class) {
-    return `Class ${text(before.class)} changed to ${text(after.class)} for #${text(after.number)}`;
-  }
-  if (entry.entity.type === "race" && "length" in after) {
-    return `Race length ${describeLength(before.length)} changed to ${describeLength(after.length)}`;
-  }
-  if (entry.entity.type === "race" && after.rowGapSeconds !== undefined) {
-    return `Row gap changed to ${text(after.rowGapSeconds)} seconds`;
-  }
-  if (entry.entity.type === "race" && "plannedStart" in after) {
-    return after.plannedStart
-      ? `Planned start changed to ${text(after.plannedStart)}`
-      : "Planned start cleared";
+  if (typeof after.detail === "string") return after.detail;
+  if (before.class && after.class && before.class !== after.class) {
+    return `Class ${text(before.class)} changed to ${text(after.class)}`;
   }
   return `${entry.action} ${entry.entity.type}`;
 }
 
-function describeLength(value: unknown): string {
-  if (!value || typeof value !== "object") return "—";
-  const length = value as { mode?: string; minutes?: number; laps?: number | null };
-  if (length.mode === "time") return `${text(length.minutes)} min`;
-  if (length.mode === "laps") {
-    return length.laps == null ? "laps, until the finish" : `${text(length.laps)} laps`;
-  }
-  return "—";
-}
-
 function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
-    : {};
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
 function text(value: unknown): string {
-  if (value === undefined || value === null) return "—";
-  return String(value);
+  return value === undefined || value === null ? "—" : String(value);
 }

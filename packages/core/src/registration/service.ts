@@ -18,6 +18,7 @@ import {
 } from "../schemas/race-package.js";
 import type { PhoneRosterRider } from "../schemas/rider.js";
 import { rosterDeltaMessageSchema, type RosterDeltaMessage } from "../schemas/sync.js";
+import type { RiderContact } from "../privacy.js";
 import { SCHEMA_VERSION } from "../version.js";
 import { RegistrationError } from "./errors.js";
 import { z } from "zod";
@@ -34,6 +35,14 @@ export const raceDayStateSchema = z
     dayOfRegistrations: z.array(dayOfRegistrationSchema),
     changelog: z.array(changelogEntrySchema),
     rosterDeltas: z.array(rosterDeltaMessageSchema),
+    /**
+     * Last time the laptop edited a record. Keys are `race:<id>` and
+     * `registration:<number>`. Re-import compares these to the site's
+     * `updatedAt`. Absent means the laptop has not edited that record.
+     */
+    localEdits: z.record(z.string(), isoTimestampSchema).default({}),
+    /** Event `updated_date` from the site at the last import or re-import. */
+    sourceUpdatedAt: isoTimestampSchema.nullable().optional(),
   })
   .superRefine((state, ctx) => {
     const entryIds = new Set<string>();
@@ -171,6 +180,7 @@ export function isRiderNumberTaken(
 export function importRacePackage(input: {
   racePackage: RacePackage;
   downloadedAt: string;
+  sourceUpdatedAt?: string | null;
 }): RaceDayState {
   const snapshot = racePackageSchema.parse(structuredClone(input.racePackage));
   const race = structuredClone(snapshot);
@@ -192,6 +202,8 @@ export function importRacePackage(input: {
     dayOfRegistrations: [],
     changelog: [],
     rosterDeltas: [delta],
+    localEdits: {},
+    sourceUpdatedAt: input.sourceUpdatedAt ?? snapshot.event.updatedAt ?? null,
   });
 }
 
@@ -260,6 +272,7 @@ export function addSeriesRiderToEvent(
     },
     upserts: [{ name: rider.name, number: rider.number, class: rider.class }],
     removals: [],
+    editedNumbers: [rider.number],
   });
 }
 
@@ -331,6 +344,7 @@ export function registerNewRider(
     after: { number: input.number, name, class: input.class, seriesId, dayOf: true },
     upserts: [{ name, number: input.number, class: input.class }],
     removals: [],
+    editedNumbers: [input.number],
   });
 }
 
@@ -378,6 +392,8 @@ export function changeRiderNumber(
       { name: registration.name, number: input.nextNumber, class: registration.class },
     ],
     removals: [registration.riderNumber],
+    editedNumbers: [input.nextNumber],
+    previousNumber: registration.riderNumber,
   });
 }
 
@@ -420,6 +436,7 @@ export function changeRiderClass(
       },
     ],
     removals: [],
+    editedNumbers: [registration.riderNumber],
   });
 }
 
@@ -630,6 +647,349 @@ export function addClassToStartRow(
   return changeClassOnStartRow(state, input, "add");
 }
 
+export function raceOffersClass(race: Race, riderClass: RiderClass): boolean {
+  return race.startRows.some((row) => row.classes.includes(riderClass));
+}
+
+export function racesOfferingClass(
+  races: readonly Race[],
+  riderClass: RiderClass,
+): Race[] {
+  return races.filter((race) => raceOffersClass(race, riderClass));
+}
+
+/** Races this rider is in. Omitted `enteredRaceIds` means every race for their class. */
+export function racesForRegistration(
+  registration: RacePackage["registrations"][number],
+  races: readonly Race[],
+): Race[] {
+  if (registration.enteredRaceIds) {
+    const wanted = new Set(registration.enteredRaceIds);
+    return races.filter((race) => wanted.has(race.id));
+  }
+  return racesOfferingClass(races, registration.class);
+}
+
+export function unassignedInRace(
+  race: Race,
+  registrations: readonly RacePackage["registrations"][number][],
+  races: readonly Race[],
+): RacePackage["registrations"][number][] {
+  return registrations.filter((registration) => {
+    const entered = racesForRegistration(registration, races).some(
+      (entry) => entry.id === race.id,
+    );
+    if (!entered) return false;
+    return !registration.assignedRows.some((assignment) => assignment.raceId === race.id);
+  });
+}
+
+/** When row N leaves. Row 1 leaves at `plannedStart`. */
+export function rowPlannedStart(race: Race, rowOrder: number): string | null {
+  if (!race.plannedStart) return null;
+  const start = Date.parse(race.plannedStart);
+  if (!Number.isFinite(start)) return null;
+  return new Date(start + race.rowGapSeconds * (rowOrder - 1) * 1000).toISOString();
+}
+
+export interface RacePlacement {
+  raceId: string;
+  /** Null leaves the rider entered and unassigned. */
+  row: number | null;
+}
+
+/**
+ * Which races a rider is in, and the row on each. A race that does not hold
+ * their class is rejected. A row that does not hold their class is rejected.
+ */
+export function setRiderPlacements(
+  state: RaceDayState,
+  input: {
+    riderNumber: number;
+    placements: readonly RacePlacement[];
+    audit: ChangeAudit;
+  },
+): RaceDayState {
+  const registration = findRegistration(state, input.riderNumber);
+  const placements = normalizePlacements(state, registration.class, input.placements);
+  const assignedRows = placements
+    .filter((placement) => placement.row !== null)
+    .map((placement) => ({ raceId: placement.raceId, row: placement.row as number }));
+  const enteredRaceIds = placements.map((placement) => placement.raceId);
+  const same =
+    sameIds(registration.enteredRaceIds, enteredRaceIds) &&
+    sameAssignments(registration.assignedRows, assignedRows);
+  if (same) {
+    throw new RegistrationError("no_change", "Those races and rows are already set");
+  }
+  return commitRoster(state, input.audit, {
+    race: {
+      ...state.race,
+      registrations: state.race.registrations.map((entry) =>
+        entry.riderNumber === registration.riderNumber
+          ? { ...entry, enteredRaceIds, assignedRows }
+          : entry,
+      ),
+    },
+    action: "change",
+    entityId: registration.seriesId ?? `number:${registration.riderNumber}`,
+    before: placementView(registration),
+    after: {
+      number: registration.riderNumber,
+      name: registration.name,
+      class: registration.class,
+      races: enteredRaceIds,
+      rows: assignedRows,
+    },
+    upserts: [],
+    removals: [],
+    editedNumbers: [registration.riderNumber],
+    skipRoster: true,
+  });
+}
+
+export function assignRiderToRow(
+  state: RaceDayState,
+  input: { riderNumber: number; raceId: string; row: number; audit: ChangeAudit },
+): RaceDayState {
+  const registration = findRegistration(state, input.riderNumber);
+  const current = racesForRegistration(registration, state.race.races);
+  const placements = [
+    ...current
+      .filter((race) => race.id !== input.raceId)
+      .map((race) => ({
+        raceId: race.id,
+        row:
+          registration.assignedRows.find((assignment) => assignment.raceId === race.id)
+            ?.row ?? null,
+      })),
+    { raceId: input.raceId, row: input.row },
+  ];
+  return setRiderPlacements(state, {
+    riderNumber: input.riderNumber,
+    placements,
+    audit: input.audit,
+  });
+}
+
+export function clearRiderRow(
+  state: RaceDayState,
+  input: { riderNumber: number; raceId: string; audit: ChangeAudit },
+): RaceDayState {
+  const registration = findRegistration(state, input.riderNumber);
+  const current = racesForRegistration(registration, state.race.races);
+  if (!current.some((race) => race.id === input.raceId)) {
+    throw new RegistrationError("not_in_race", "That rider is not in this race");
+  }
+  return setRiderPlacements(state, {
+    riderNumber: input.riderNumber,
+    placements: current.map((race) => ({
+      raceId: race.id,
+      row:
+        race.id === input.raceId
+          ? null
+          : (registration.assignedRows.find((assignment) => assignment.raceId === race.id)
+              ?.row ?? null),
+    })),
+    audit: input.audit,
+  });
+}
+
+/** Appends one race-wide row for a class. Row N leaves at row 1 plus the gap times (N - 1). */
+export function addStartRow(
+  state: RaceDayState,
+  input: { raceId: string; riderClass: RiderClass; rowId: string; audit: ChangeAudit },
+): RaceDayState {
+  if (!RIDER_CLASSES.includes(input.riderClass)) {
+    throw new RegistrationError("missing_field", "Class is required");
+  }
+  const rowId = input.rowId.trim();
+  if (!rowId) throw new RegistrationError("missing_field", "A row id is required");
+  const current = findRace(state, input.raceId);
+  if (current.startRows.some((row) => row.id === rowId)) {
+    throw new RegistrationError("duplicate_entry", "That row id is already on this race");
+  }
+  const order = Math.max(...current.startRows.map((row) => row.order)) + 1;
+  const startRows = [
+    ...current.startRows,
+    { id: rowId, order, label: input.riderClass, classes: [input.riderClass] },
+  ];
+  return commitRace(state, input.audit, input.raceId, {
+    before: { startRows: current.startRows.map(startRowView) },
+    after: { startRows: startRows.map(startRowView) },
+    update: (race) => ({ ...race, startRows }),
+  });
+}
+
+/**
+ * Removes a row and moves its riders to unassigned. The remaining rows are
+ * renumbered from 1 so the race-wide sequence stays contiguous. Planned starts
+ * follow the new numbers.
+ */
+export function removeStartRow(
+  state: RaceDayState,
+  input: { raceId: string; startRowId: string; audit: ChangeAudit },
+): RaceDayState {
+  const current = findRace(state, input.raceId);
+  const target = current.startRows.find((row) => row.id === input.startRowId);
+  if (!target) {
+    throw new RegistrationError(
+      "start_row_not_found",
+      "That start row is not on this race",
+    );
+  }
+  if (current.startRows.length === 1) {
+    throw new RegistrationError("no_change", "A race has to keep at least one row");
+  }
+  const remaining = [...current.startRows]
+    .filter((row) => row.id !== target.id)
+    .sort((a, b) => a.order - b.order)
+    .map((row, index) => ({ ...row, order: index + 1 }));
+  const orderMap = new Map(remaining.map((row) => [row.id, row.order]));
+  const touched: number[] = [];
+  const registrations = state.race.registrations.map((registration) => {
+    const assignment = registration.assignedRows.find(
+      (entry) => entry.raceId === current.id,
+    );
+    if (!assignment) return registration;
+    if (assignment.row === target.order) {
+      touched.push(registration.riderNumber);
+      return {
+        ...registration,
+        assignedRows: registration.assignedRows.filter(
+          (entry) => entry.raceId !== current.id,
+        ),
+      };
+    }
+    const row = current.startRows.find(
+      (entry) => entry.order === assignment.row && entry.id !== target.id,
+    );
+    if (!row) return registration;
+    const nextOrder = orderMap.get(row.id);
+    if (!nextOrder || nextOrder === assignment.row) return registration;
+    touched.push(registration.riderNumber);
+    return {
+      ...registration,
+      assignedRows: registration.assignedRows.map((entry) =>
+        entry.raceId === current.id ? { ...entry, row: nextOrder } : entry,
+      ),
+    };
+  });
+  return commitRace(state, input.audit, input.raceId, {
+    before: { startRows: current.startRows.map(startRowView), unassigned: [] },
+    after: {
+      startRows: remaining.map(startRowView),
+      unassigned: touched.filter((riderNumber) =>
+        registrations
+          .find((entry) => entry.riderNumber === riderNumber)
+          ?.assignedRows.every((entry) => entry.raceId !== current.id),
+      ),
+    },
+    update: (race) => ({ ...race, startRows: remaining }),
+    registrations,
+    editedNumbers: touched,
+  });
+}
+
+export interface NewRiderInput {
+  seriesId: string;
+  firstName: string;
+  lastName: string;
+  number: number;
+  class: RiderClass;
+  payment?: string;
+  contact: RiderContact;
+  placements: readonly RacePlacement[];
+  /** Queue a series Rider upload. The rider is still saved on this laptop either way. */
+  addToSeries: boolean;
+  audit: ChangeAudit;
+}
+
+/**
+ * New rider from the laptop form. Safety acceptance is required. Contact
+ * fields stay off the changelog.
+ */
+export function registerRider(state: RaceDayState, input: NewRiderInput): RaceDayState {
+  if (!input.contact.safetyAcknowledgedAt) {
+    throw new RegistrationError(
+      "safety_required",
+      "The safety acknowledgement has to be accepted before this rider can be saved",
+    );
+  }
+  if (
+    input.contact.dateOfBirth &&
+    !/^\d{4}-\d{2}-\d{2}$/.test(input.contact.dateOfBirth)
+  ) {
+    throw new RegistrationError("missing_field", "Date of birth must be YYYY-MM-DD");
+  }
+  const firstName = input.firstName.trim();
+  const lastName = input.lastName.trim();
+  const name = `${firstName} ${lastName}`.trim();
+  if (!firstName || !lastName) {
+    throw new RegistrationError("missing_field", "First and last name are required");
+  }
+  const placements = normalizePlacements(state, input.class, input.placements);
+  const base = registerNewRider(state, {
+    seriesId: input.seriesId,
+    name,
+    number: input.number,
+    class: input.class,
+    audit: input.audit,
+  });
+  const payment = input.payment?.trim();
+  const contact = {
+    dateOfBirth: emptyToNull(input.contact.dateOfBirth),
+    phone: emptyToNull(input.contact.phone),
+    email: emptyToNull(input.contact.email),
+    emergencyContactName: emptyToNull(input.contact.emergencyContactName),
+    emergencyContactPhone: emptyToNull(input.contact.emergencyContactPhone),
+    emergencyContactRelation: emptyToNull(input.contact.emergencyContactRelation),
+    safetyAcknowledged: true,
+    safetyAcknowledgedAt: input.contact.safetyAcknowledgedAt,
+  };
+  const enteredRaceIds = placements.map((placement) => placement.raceId);
+  const assignedRows = placements
+    .filter((placement) => placement.row !== null)
+    .map((placement) => ({ raceId: placement.raceId, row: placement.row as number }));
+  const race = racePackageSchema.parse({
+    ...base.race,
+    riders: base.race.riders.map((rider) =>
+      rider.seriesId === input.seriesId.trim() ? { ...rider, ...contact } : rider,
+    ),
+    registrations: base.race.registrations.map((registration) =>
+      registration.riderNumber === input.number
+        ? {
+            ...registration,
+            ...contact,
+            ...(payment ? { payment } : {}),
+            enteredRaceIds,
+            assignedRows,
+          }
+        : registration,
+    ),
+  });
+  const created = base.changelog.at(-1);
+  const changelog = base.changelog.map((entry) =>
+    entry.id === created?.id
+      ? {
+          ...entry,
+          after: {
+            number: input.number,
+            name,
+            class: input.class,
+            seriesId: input.seriesId.trim(),
+            dayOf: true,
+            addToSeries: input.addToSeries,
+            races: enteredRaceIds,
+            rows: assignedRows,
+            payment: payment ?? null,
+          },
+        }
+      : entry,
+  );
+  return raceDayStateSchema.parse({ ...base, race, changelog });
+}
+
 /** Takes the class off this row only. Other rows of the same class stay. */
 export function removeClassFromStartRow(
   state: RaceDayState,
@@ -814,20 +1174,28 @@ function commitRoster(
     after: unknown;
     upserts: PhoneRosterRider[];
     removals: number[];
+    /** Registration numbers this edit touched. The new number, after a change. */
+    editedNumbers?: number[];
+    /** Previous number when a plate change moved the local-edit key. */
+    previousNumber?: number;
+    /** Row and race-entry edits stay off the phone roster. */
+    skipRoster?: boolean;
   },
 ): RaceDayState {
   const audit = requireAudit(auditInput);
   assertNewEntry(state, audit.entryId);
   const race = racePackageSchema.parse(change.race);
-  const delta = rosterDeltaMessageSchema.parse({
-    schemaVersion: SCHEMA_VERSION,
-    type: "roster_delta",
-    eventId: race.event.id,
-    version: state.rosterVersion + 1,
-    baseVersion: state.rosterVersion,
-    upserts: change.upserts,
-    removals: change.removals,
-  });
+  const delta = change.skipRoster
+    ? null
+    : rosterDeltaMessageSchema.parse({
+        schemaVersion: SCHEMA_VERSION,
+        type: "roster_delta",
+        eventId: race.event.id,
+        version: state.rosterVersion + 1,
+        baseVersion: state.rosterVersion,
+        upserts: change.upserts,
+        removals: change.removals,
+      });
   const entry = createChangelogEntry({
     id: audit.entryId,
     who: audit.who,
@@ -838,13 +1206,21 @@ function commitRoster(
     before: change.before,
     after: change.after,
   });
+  const localEdits = { ...state.localEdits };
+  if (change.previousNumber !== undefined) {
+    delete localEdits[`registration:${change.previousNumber}`];
+  }
+  for (const riderNumber of change.editedNumbers ?? []) {
+    localEdits[`registration:${riderNumber}`] = audit.when;
+  }
   return raceDayStateSchema.parse({
     ...state,
+    localEdits,
     race,
     dayOfRegistrations: change.dayOfRegistrations ?? state.dayOfRegistrations,
     changelog: [...state.changelog, entry],
-    rosterDeltas: [...state.rosterDeltas, delta],
-    rosterVersion: state.rosterVersion + 1,
+    rosterDeltas: delta ? [...state.rosterDeltas, delta] : state.rosterDeltas,
+    rosterVersion: delta ? state.rosterVersion + 1 : state.rosterVersion,
   });
 }
 
@@ -856,6 +1232,8 @@ function commitRace(
     before: unknown;
     after: unknown;
     update: (race: Race) => Race;
+    registrations?: RacePackage["registrations"];
+    editedNumbers?: number[];
   },
 ): RaceDayState {
   const audit = requireAudit(auditInput);
@@ -867,7 +1245,13 @@ function commitRace(
     return change.update(entry);
   });
   if (!found) throw new RegistrationError("race_not_found", `No race with id ${raceId}`);
-  const race = racePackageSchema.parse(syncEventCourse({ ...state.race, races }));
+  const race = racePackageSchema.parse(
+    syncEventCourse({
+      ...state.race,
+      races,
+      registrations: change.registrations ?? state.race.registrations,
+    }),
+  );
   const entry = createChangelogEntry({
     id: audit.entryId,
     who: audit.who,
@@ -878,11 +1262,98 @@ function commitRace(
     before: change.before,
     after: change.after,
   });
+  const localEdits = { ...state.localEdits, [`race:${raceId}`]: audit.when };
+  for (const riderNumber of change.editedNumbers ?? []) {
+    localEdits[`registration:${riderNumber}`] = audit.when;
+  }
   return raceDayStateSchema.parse({
     ...state,
+    localEdits,
     race,
     changelog: [...state.changelog, entry],
   });
+}
+
+function normalizePlacements(
+  state: RaceDayState,
+  riderClass: RiderClass,
+  placements: readonly RacePlacement[],
+): RacePlacement[] {
+  if (!RIDER_CLASSES.includes(riderClass)) {
+    throw new RegistrationError("missing_field", "Class is required");
+  }
+  const seen = new Set<string>();
+  const out: RacePlacement[] = [];
+  for (const placement of placements) {
+    const race = findRace(state, placement.raceId);
+    if (seen.has(race.id)) {
+      throw new RegistrationError(
+        "no_change",
+        "A rider can only be placed once in a race",
+      );
+    }
+    seen.add(race.id);
+    if (!raceOffersClass(race, riderClass)) {
+      throw new RegistrationError(
+        "race_class",
+        `${riderClass} does not run in ${race.name}`,
+      );
+    }
+    if (placement.row !== null) {
+      if (!Number.isInteger(placement.row) || placement.row < 1) {
+        throw new RegistrationError("invalid_number", "Row numbers start at 1");
+      }
+      const row = race.startRows.find((entry) => entry.order === placement.row);
+      if (!row) {
+        throw new RegistrationError(
+          "start_row_not_found",
+          `Row ${placement.row} is not on ${race.name}`,
+        );
+      }
+      if (!row.classes.includes(riderClass)) {
+        throw new RegistrationError(
+          "row_class",
+          `Row ${placement.row} on ${race.name} does not hold ${riderClass}`,
+        );
+      }
+    }
+    out.push({ raceId: race.id, row: placement.row });
+  }
+  return out;
+}
+
+function sameIds(
+  current: readonly string[] | undefined,
+  next: readonly string[],
+): boolean {
+  if (!current || current.length !== next.length) return false;
+  return current.every((id, index) => id === next[index]);
+}
+
+function sameAssignments(
+  current: readonly { raceId: string; row: number }[],
+  next: readonly { raceId: string; row: number }[],
+): boolean {
+  if (current.length !== next.length) return false;
+  return current.every(
+    (assignment, index) =>
+      assignment.raceId === next[index]?.raceId && assignment.row === next[index]?.row,
+  );
+}
+
+function placementView(registration: RacePackage["registrations"][number]) {
+  return {
+    number: registration.riderNumber,
+    name: registration.name,
+    class: registration.class,
+    races: registration.enteredRaceIds ?? null,
+    rows: registration.assignedRows.map((assignment) => ({ ...assignment })),
+  };
+}
+
+function emptyToNull(value: string | null | undefined): string | null {
+  const text = value?.trim() ?? "";
+  return text ? text : null;
 }
 
 function assertNewEntry(state: RaceDayState, entryId: string): void {

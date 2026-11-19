@@ -1,10 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
-import {
-  createSampleRacePackage,
-  SAMPLE_EVENT_ID,
-} from "../fixtures/sample-race-package.js";
+import { mockCatalog, touchRacePackage, type MockCatalogEvent } from "./mock-catalog.js";
+import type { SeriesRiderUpload } from "./client.js";
 import { isHubRole } from "./client.js";
 import {
   createSignInCode,
@@ -53,16 +51,21 @@ export function startMockSite(options?: {
   const host = options?.host ?? "127.0.0.1";
   const sessions = new Map<string, Session>();
   const tickets = new Map<string, Ticket>();
+  const catalog = mockCatalog();
+  const revisions = new Map<string, MockCatalogEvent["racePackage"]>();
+  const uploaded: SeriesRiderUpload[] = [];
   const server = createServer((request, response) => {
-    void handle(request, response, sessions, tickets).catch((error: unknown) => {
-      if (response.headersSent) return;
-      const message = error instanceof Error ? error.message : "Mock site failed";
-      writeJson(response, 500, {
-        ok: false,
-        error: "server_error",
-        message,
-      });
-    });
+    void handle(request, response, sessions, tickets, catalog, revisions, uploaded).catch(
+      (error: unknown) => {
+        if (response.headersSent) return;
+        const message = error instanceof Error ? error.message : "Mock site failed";
+        writeJson(response, 500, {
+          ok: false,
+          error: "server_error",
+          message,
+        });
+      },
+    );
   });
 
   return new Promise((resolve, reject) => {
@@ -89,6 +92,9 @@ async function handle(
   response: ServerResponse,
   sessions: Map<string, Session>,
   tickets: Map<string, Ticket>,
+  catalog: MockCatalogEvent[],
+  revisions: Map<string, MockCatalogEvent["racePackage"]>,
+  uploaded: SeriesRiderUpload[],
 ): Promise<void> {
   if (request.method === "OPTIONS") {
     writeJson(response, 204, null);
@@ -123,7 +129,19 @@ async function handle(
     return;
   }
   if (request.method === "GET" && url.pathname === "/functions/getRacePackage") {
-    handlePackage(request, response, sessions, url);
+    handlePackage(request, response, sessions, url, catalog, revisions, uploaded);
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/functions/listEvents") {
+    handleEventList(request, response, sessions, catalog, revisions);
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/functions/uploadSeriesRiders") {
+    await handleUploadRiders(request, response, sessions, uploaded);
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/mock/touch-event") {
+    await handleTouch(request, response, sessions, catalog, revisions);
     return;
   }
 
@@ -398,11 +416,132 @@ function handleMe(
   writeRaw(response, 200, publicUser(session.account, appId));
 }
 
+function handleEventList(
+  request: IncomingMessage,
+  response: ServerResponse,
+  sessions: Map<string, Session>,
+  catalog: MockCatalogEvent[],
+  revisions: Map<string, MockCatalogEvent["racePackage"]>,
+): void {
+  if (!requireDirector(request, response, sessions)) return;
+  const events = catalog.map((entry) => {
+    const revised = revisions.get(entry.summary.id);
+    if (!revised?.event.updatedAt) return entry.summary;
+    return {
+      ...entry.summary,
+      updatedAt: revised.event.updatedAt,
+      raceCount: revised.races.length,
+      registrationCount: revised.registrations.length,
+    };
+  });
+  writeJson(response, 200, { ok: true, events });
+}
+
+async function handleUploadRiders(
+  request: IncomingMessage,
+  response: ServerResponse,
+  sessions: Map<string, Session>,
+  uploaded: SeriesRiderUpload[],
+): Promise<void> {
+  if (!requireDirector(request, response, sessions)) return;
+  const body = await readBody(request);
+  const riders = Array.isArray((body as { riders?: unknown } | null)?.riders)
+    ? ((body as { riders: SeriesRiderUpload[] }).riders ?? [])
+    : [];
+  if (riders.length === 0) {
+    writeJson(response, 400, {
+      ok: false,
+      error: "missing_riders",
+      message: "At least one rider is required",
+    });
+    return;
+  }
+  const created = [];
+  for (const rider of riders) {
+    if (!rider || typeof rider.localId !== "string" || !rider.localId.trim()) {
+      writeJson(response, 400, {
+        ok: false,
+        error: "missing_riders",
+        message: "Each rider needs a localId",
+      });
+      return;
+    }
+    if (!rider.safetyAcknowledgedAt) {
+      writeJson(response, 400, {
+        ok: false,
+        error: "safety_required",
+        message: "A new series rider needs a safety acknowledgement",
+      });
+      return;
+    }
+    uploaded.push(rider);
+    created.push({ localId: rider.localId, seriesId: rider.localId });
+  }
+  writeJson(response, 200, { ok: true, created });
+}
+
+async function handleTouch(
+  request: IncomingMessage,
+  response: ServerResponse,
+  sessions: Map<string, Session>,
+  catalog: MockCatalogEvent[],
+  revisions: Map<string, MockCatalogEvent["racePackage"]>,
+): Promise<void> {
+  if (!requireDirector(request, response, sessions)) return;
+  const body = await readBody(request);
+  const eventId = stringField(body, "eventId");
+  const known = catalog.find((entry) => entry.summary.id === eventId);
+  if (!known) {
+    writeJson(response, 404, {
+      ok: false,
+      error: "event_not_found",
+      message: "No event with id " + eventId,
+    });
+    return;
+  }
+  const current = revisions.get(eventId) ?? known.racePackage;
+  const next = touchRacePackage(current, new Date().toISOString());
+  revisions.set(eventId, next);
+  writeJson(response, 200, {
+    ok: true,
+    eventId,
+    updatedAt: next.event.updatedAt ?? null,
+  });
+}
+
+function requireDirector(
+  request: IncomingMessage,
+  response: ServerResponse,
+  sessions: Map<string, Session>,
+): Session | null {
+  const session = sessionFor(request, sessions);
+  if (!session) {
+    writeJson(response, 401, {
+      ok: false,
+      error: "unauthorized",
+      message: "Sign in as a race director or admin",
+    });
+    return null;
+  }
+  if (!isHubRole(session.account.role)) {
+    writeJson(response, 403, {
+      ok: false,
+      error: "forbidden",
+      message: "This account is not a race director or admin",
+    });
+    return null;
+  }
+  return session;
+}
+
 function handlePackage(
   request: IncomingMessage,
   response: ServerResponse,
   sessions: Map<string, Session>,
   url: URL,
+  catalog: MockCatalogEvent[],
+  revisions: Map<string, MockCatalogEvent["racePackage"]>,
+  uploaded: SeriesRiderUpload[],
 ): void {
   const session = sessionFor(request, sessions);
   if (!session) {
@@ -431,7 +570,8 @@ function handlePackage(
     });
     return;
   }
-  if (eventId !== SAMPLE_EVENT_ID) {
+  const known = catalog.find((entry) => entry.summary.id === eventId);
+  if (!known) {
     writeJson(response, 404, {
       ok: false,
       error: "event_not_found",
@@ -439,11 +579,27 @@ function handlePackage(
     });
     return;
   }
+  const racePackage = structuredClone(revisions.get(eventId) ?? known.racePackage);
+  for (const rider of uploaded) {
+    if (racePackage.riders.some((entry) => entry.number === rider.bikeNumber)) continue;
+    racePackage.riders.push({
+      seriesId: rider.localId,
+      name: `${rider.firstName} ${rider.lastName}`.trim(),
+      number: rider.bikeNumber,
+      class: rider.riderClass,
+      updatedAt: rider.safetyAcknowledgedAt,
+      dateOfBirth: rider.dateOfBirth,
+      phone: rider.phone,
+      email: rider.email,
+      emergencyContactName: rider.emergencyContactName,
+      emergencyContactPhone: rider.emergencyContactPhone,
+      emergencyContactRelation: rider.emergencyContactRelation,
+      safetyAcknowledged: true,
+      safetyAcknowledgedAt: rider.safetyAcknowledgedAt,
+    });
+  }
 
-  writeJson(response, 200, {
-    ok: true,
-    racePackage: createSampleRacePackage(),
-  });
+  writeJson(response, 200, { ok: true, racePackage });
 }
 
 function sessionFor(

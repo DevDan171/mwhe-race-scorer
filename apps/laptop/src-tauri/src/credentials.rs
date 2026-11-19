@@ -2,9 +2,15 @@ use keyring::Entry;
 
 const SERVICE: &str = "MWHE Race Scorer";
 const ACCOUNT: &str = "site-bearer-token";
+/// AES-256 key for rider contact fields. Not the sign-in token.
+const VAULT_ACCOUNT: &str = "rider-private-key";
 
 fn entry() -> Result<Entry, String> {
     Entry::new(SERVICE, ACCOUNT).map_err(|err| err.to_string())
+}
+
+fn vault_entry() -> Result<Entry, String> {
+    Entry::new(SERVICE, VAULT_ACCOUNT).map_err(|err| err.to_string())
 }
 
 #[tauri::command]
@@ -23,6 +29,26 @@ pub(crate) fn credential_set(token: String) -> Result<(), String> {
         return Err("Token is empty".to_string());
     }
     entry()?.set_password(trimmed).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+pub(crate) fn credential_get_vault() -> Result<Option<String>, String> {
+    match vault_entry()?.get_password() {
+        Ok(value) => Ok(Some(value)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+#[tauri::command]
+pub(crate) fn credential_set_vault(value: String) -> Result<(), String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("Vault key is empty".to_string());
+    }
+    vault_entry()?
+        .set_password(trimmed)
+        .map_err(|err| err.to_string())
 }
 
 #[tauri::command]

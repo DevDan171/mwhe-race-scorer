@@ -104,6 +104,36 @@ describe("hub sqlite", () => {
   });
 });
 
+describe("private fields on disk", () => {
+  it("does not write contact values into the race file", async () => {
+    const db = await createSqlJsExecutor();
+    const store = createHubStore(db);
+    const racePackage = createSampleRacePackage();
+    const rider = racePackage.registrations[0];
+    if (!rider) throw new Error("missing rider");
+    rider.phone = "(555) 013-0109";
+    rider.email = "cole.hendricks@example.com";
+    rider.emergencyContactName = "Dana Hendricks";
+    rider.emergencyContactPhone = "(555) 013-0210";
+    await store.save({
+      operatorName: "Dana Director",
+      baseUrl: "http://127.0.0.1:8787",
+      appId: MOCK_APP_ID,
+      account: null,
+      state: importRacePackage({
+        racePackage,
+        downloadedAt: "2026-09-11T18:00:00.000Z",
+      }),
+    });
+    const dumped = new TextDecoder().decode(db.exportBytes());
+    expect(dumped.includes("(555) 013-0109")).toBe(false);
+    expect(dumped.includes("cole.hendricks@example.com")).toBe(false);
+    expect(dumped.includes("Dana Hendricks")).toBe(false);
+    const loaded = await store.load();
+    expect(loaded.state?.race.registrations[0]?.phone).toBeUndefined();
+  });
+});
+
 describe("site origin", () => {
   it("uses the mock site in dev and the live site in a packaged build", () => {
     expect(defaultSiteOrigin(true)).toBe("http://127.0.0.1:8787");

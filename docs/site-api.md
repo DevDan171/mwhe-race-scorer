@@ -1,6 +1,16 @@
 # Site API
 
-The laptop is the only app that talks to [MidwestHardEnduro.com](https://midwesthardenduro.com). The server functions are **not** in this repo. Build them in Base44 from this page.
+The laptop is the only app that talks to [MidwestHardEnduro.com](https://midwesthardenduro.com). The server functions are **not** in this repo. Build them in Base44 from the files in [`docs/base44/`](base44/). Each file is one function or page and nothing else. Paste the file over the function or page of the same name.
+
+| File                                                    | What it does and why                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`listEvents.js`](base44/listEvents.js)                 | New. After sign-in the laptop lists every event, past and upcoming, so nobody types an event id. Only `race_director` and `admin`. Counts races and registrations. No rider contact fields.                                                                          |
+| [`getRacePackage.js`](base44/getRacePackage.js)         | Updated. Same download as before, plus contact and emergency fields from the Rider table, and `updatedAt` on each record so a re-import can tell which copy is newer. A roster row with a bad number now gets one warning and is skipped, instead of `Roster #null`. |
+| [`uploadSeriesRiders.js`](base44/uploadSeriesRiders.js) | New. Riders added on the laptop with "Add to series" are created on the Rider table the next time the laptop is online. Only `race_director` and `admin`. The safety acknowledgement time is required.                                                               |
+| [`laptopSignInCode.js`](base44/laptopSignInCode.js)     | Updated. The one-time code now lasts 10 minutes (`600` seconds) instead of 2, so Google sign-in can finish and hand the code back without anyone typing it. Everything else is the same.                                                                             |
+| [`laptop-signin.jsx`](base44/laptop-signin.jsx)         | Updated. When the director is signed in, the page mints the code and redirects to the laptop immediately. It no longer waits for a Continue click. The code is a small fallback line. The token is still never put on the redirect.                                  |
+
+`laptopExchangeCode` did not change. Keep the function that is already on the site. It still exchanges `{ code, state }` for `{ ok, access_token, user }` once, and it still refuses a mismatched state.
 
 People sign in with the email and password they use on the website, or with Google, which is the website's normal sign-in. The laptop gets that person's access token and sends it on later calls. Nobody sees or pastes the token. It is not a shared key. A rider's token is not enough.
 
@@ -12,9 +22,9 @@ Field names are **camelCase**, matching `packages/core`. `schemaVersion` is `1`.
 
 ## What the laptop does
 
-1. The race director either types their MidwestHardEnduro.com email and password, or clicks **Sign in with Google**.
-2. Email and password: the laptop posts those to Base44's login endpoint (the same call the SDK's `loginViaEmailPassword` makes) and reads `access_token` and `user`.
-3. Google: the laptop opens the system browser at `https://midwesthardenduro.com/laptop-signin`. The person signs in with Google on the website. The page shows a short code. The laptop trades that code for the same kind of `access_token`. The steps you build for this are in [Sign in with Google](#sign-in-with-google).
+1. The race director either types their MidwestHardEnduro.com email and password, or clicks **Sign in with Google**. There is no app id to type and no event id to type.
+2. Email and password: the laptop posts those to Base44's login endpoint (the same call the SDK's `loginViaEmailPassword` makes) and reads `access_token` and `user`. The packaged app sends app id `6aa2c672e73573140bed9035`.
+3. Google: the laptop opens the system browser at `https://midwesthardenduro.com/laptop-signin`. The person signs in with Google on the website. The page redirects the browser to a short-lived `http://127.0.0.1` address with the one-time code and the state. The laptop trades that code for the same kind of `access_token`. The token is not on that address. Typing the code is only the "Trouble signing in?" fallback. The steps you build for this are in [Sign in with Google](#sign-in-with-google).
 4. It keeps the token only when `user.role` is `race_director` or `admin`. A rider is turned away on the laptop, and your function must turn them away again.
 5. It stores the token in Windows Credential Manager (`MWHE Race Scorer` / `site-bearer-token`). The browser preview keeps it in memory. The token is not written to SQLite, a file, or the repo. The password is not stored. The one-time code is not stored.
 6. It downloads the race with `Authorization: Bearer <that token>`.
@@ -22,13 +32,7 @@ Field names are **camelCase**, matching `packages/core`. `schemaVersion` is `1`.
 
 Live sign-in goes to `https://base44.app`. That is the SDK's default server. The race download goes to the site address on the Race Prep screen (`https://midwesthardenduro.com` in the packaged app). The local mock is the exception: both calls stay on `http://127.0.0.1:8787`.
 
-The app id is in the Base44 editor URL:
-
-```text
-https://app.base44.com/apps/<your-app-id>/editor/...
-```
-
-It is not a password. Put it in the App id field once on each laptop. Race directors do not need to know what it means.
+The packaged app sends app id `6aa2c672e73573140bed9035` and talks to `https://midwesthardenduro.com`. That id is in the Base44 editor URL and is not a password. The laptop does not show a field for it. A dev preview can point at the mock site instead.
 
 ## Where this comes from
 
@@ -218,7 +222,21 @@ Check the role **before** `base44.asServiceRole`. Service role skips entity rule
 | `registrations[].registeredAt` | When they signed up, ISO-8601 with an offset, or null. The laptop lines up riders with no start row by this time. See [scoring rules](scoring-rules.md).               |
 | `registrations[].assignedRows` | `{ raceId, row }` for each race that assigned a start row. A start row is per race. Empty when none was assigned.                                                      |
 
-Leave out contact fields (email, phone, address, emergency contact). The laptop does not need them, and they must not be copied onto checkpoint phones later.
+Include these contact fields on each series rider and on each registration, copied from the linked Rider row. ScoringRoster has none of them. When a roster rider's number and name do not match a series Rider, leave the fields off and add one warning that the rider has no emergency contact.
+
+| Site field                   | Package field                                                                                |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| `date_of_birth`              | `dateOfBirth` (`YYYY-MM-DD` or omitted)                                                      |
+| `phone`                      | `phone`                                                                                      |
+| `email`                      | `email`                                                                                      |
+| `emergency_contact_name`     | `emergencyContactName`                                                                       |
+| `emergency_contact_phone`    | `emergencyContactPhone`                                                                      |
+| `emergency_contact_relation` | `emergencyContactRelation`                                                                   |
+| `safety_acknowledged`        | `safetyAcknowledged` (boolean) and `safetyAcknowledgedAt` when the site value is a timestamp |
+
+Also send `updatedAt` (ISO-8601) from each record's `updated_date` on the event, each race, each series rider, and each registration. The laptop compares that with the last time someone edited that record on the laptop. The newer one wins. Race-day registrations entered on the laptop are never removed or overwritten.
+
+The laptop stores the contact fields encrypted and does not copy them onto checkpoint phones, into results, or into the changelog.
 
 `seriesId` is `null` only for a day-of entry that is not on the series list. A non-null `seriesId` must be the series rider who owns that number. A day-of number cannot collide with a series rider. The laptop's own day-of sign-ups are **not** in this download. They are created offline and pushed later.
 
@@ -248,7 +266,7 @@ Always return JSON, including on failure. `error` is a stable code. `message` is
 
 ### Function to paste
 
-Create a function named `getRacePackage` and paste this over the one on the site. It reads `Event`, `Race`, `ScoringRoster`, `EventRegistration`, and `Rider`. It does not copy email, phone, birth date, address, or emergency contact.
+Create a function named `getRacePackage` and paste [`docs/base44/getRacePackage.js`](base44/getRacePackage.js) over the one on the site. It reads `Event`, `Race`, `ScoringRoster`, `EventRegistration`, and `Rider`. It copies birth date, phone, email, emergency contact, and the safety acknowledgement from Rider. It does not copy a street address.
 
 Unpaid riders are included. Rider numbers are whole numbers only. `?report=1` adds a `report` object for a director checking the download in a browser. The laptop must not send that. The extra key is rejected.
 
@@ -268,810 +286,9 @@ A start row is per race. The shape to add on `ScoringRoster` (and on `EventRegis
 
 If `length_type` is empty, a positive `length_minutes` is sent as a time race and a positive `length_laps` is sent as a lap race. A race with neither is sent as laps until the finish, with a warning, and is not given a 180 minute limit. Both values with no type stops the download until `length_type` is set.
 
-```javascript
-import { createClientFromRequest } from "npm:@base44/sdk";
+Paste [`docs/base44/getRacePackage.js`](base44/getRacePackage.js) over the `getRacePackage` function. It is the live function plus contact fields, `updatedAt`, and the single warning for a bad roster number.
 
-// ---------------------------------------------------------------------------
-// getRacePackage: builds the race download for the MWHE laptop.
-// Reads these entities (read only): Event, Race, ScoringRoster,
-// EventRegistration, Rider. It never copies email, phone, birth date,
-// address or emergency contact into the response.
-// Race length comes from length_type, length_laps, and length_minutes.
-// A class may start on several rows (Race.classes[].rows). Row numbers
-// run across the race. Row N leaves at start_at plus row_gap_seconds
-// times (N - 1). A start row is per race. start_rows is
-// [{ race_id, row }]. The single start_row number is used only when
-// the rider's class is on exactly one race.
-// ---------------------------------------------------------------------------
-
-const HUB_ROLES = new Set(["race_director", "admin"]);
-
-// Official class list, in the order the laptop requires.
-const RIDER_CLASSES = [
-  "Pro",
-  "A",
-  "B",
-  "C",
-  "+40A",
-  "+40B",
-  "+40C",
-  "Womens",
-  "Womens Pro",
-  "Electric Sportsman",
-  "Electric Pro",
-  "65/85",
-  "50cc",
-];
-
-// Race length is read in readRaceLength. The Edit Race form uses
-// length_type, length_laps, and length_minutes. A lap race with no lap
-// count runs until the finish and is not given a time limit.
-const MAX_CLASS_ROWS = 30;
-
-// true  = riders marked unpaid are still sent (the laptop has no paid flag).
-// false = unpaid riders are left out of the download.
-const INCLUDE_UNPAID = true;
-
-export default async function (req) {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: cors() });
-  }
-  if (req.method !== "GET" && req.method !== "POST") {
-    return fail(405, "method_not_allowed", "Use GET");
-  }
-
-  let user = null;
-  try {
-    const base44 = createClientFromRequest(req);
-    user = await base44.auth.me();
-    if (!user) return fail(401, "unauthorized", "Sign in as a race director or admin");
-
-    const role = String(user.role || "")
-      .trim()
-      .toLowerCase();
-    if (!HUB_ROLES.has(role)) {
-      return fail(403, "forbidden", "This account is not a race director or admin");
-    }
-
-    const eventId = await readEventId(req);
-    if (!eventId) return fail(400, "missing_event_id", "eventId is required");
-
-    // Role is checked above. Service role is only so entity rules cannot hide
-    // the series list or the roster from this download.
-    const db = base44.asServiceRole.entities;
-
-    const event = await findEvent(db, eventId);
-    if (!event) return fail(404, "event_not_found", "No event with id " + eventId);
-
-    const [races, roster, registrations, riders] = await Promise.all([
-      fetchAll(db.Race, { event_id: eventId }),
-      fetchAll(db.ScoringRoster, { event_id: eventId }),
-      fetchAll(db.EventRegistration, { event_id: eventId }),
-      fetchAll(db.Rider, null),
-    ]);
-
-    const built = buildRacePackage({ event, races, roster, registrations, riders });
-    if (built.problem) return fail(409, "event_not_ready", built.problem);
-
-    const wantReport = new URL(req.url).searchParams.get("report") === "1";
-    if (wantReport) {
-      // For a director checking the download from a browser or PowerShell.
-      // The laptop never asks for this. It holds counts and rider numbers only.
-      return Response.json(
-        { ok: true, racePackage: built.racePackage, report: built.report },
-        { status: 200, headers: cors() },
-      );
-    }
-    return Response.json(
-      { ok: true, racePackage: built.racePackage },
-      { status: 200, headers: cors() },
-    );
-  } catch (error) {
-    // Never log the Authorization header or rider data.
-    console.error("getRacePackage failed");
-    if (!user) return fail(401, "unauthorized", "Sign in as a race director or admin");
-    return fail(500, "server_error", "The race package could not be built");
-  }
-}
-
-// ----------------------------- loading -------------------------------------
-
-async function readEventId(req) {
-  const url = new URL(req.url);
-  const fromQuery = (url.searchParams.get("eventId") || "").trim();
-  if (fromQuery) return fromQuery;
-  if (req.method !== "POST") return "";
-  const body = await req.json().catch(() => ({}));
-  return String(body.eventId || "").trim();
-}
-
-async function findEvent(db, eventId) {
-  try {
-    const found = await db.Event.filter({ id: eventId });
-    return Array.isArray(found) && found.length > 0 ? found[0] : null;
-  } catch (error) {
-    // A made-up id that is not even shaped like a record id may make the
-    // lookup throw. That is "not found", not a server fault.
-    if (!/^[0-9a-f]{24}$/i.test(eventId)) return null;
-    throw error;
-  }
-}
-
-// Base44 returns a limited page by default, so ask for pages until done.
-async function fetchAll(entity, query) {
-  const pageSize = 500;
-  const out = [];
-  for (let page = 0; page < 20; page += 1) {
-    const rows = query
-      ? await entity.filter(query, "created_date", pageSize, page * pageSize)
-      : await entity.list("created_date", pageSize, page * pageSize);
-    if (!Array.isArray(rows) || rows.length === 0) break;
-    out.push(...rows);
-    if (rows.length < pageSize) break;
-  }
-  return out;
-}
-
-// ----------------------------- mapping -------------------------------------
-
-function buildRacePackage({ event, races, roster, registrations, riders }) {
-  const warnings = [];
-  const warn = (text) => warnings.push(text);
-
-  // ---- event
-  const date = String(event.date || "")
-    .trim()
-    .slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return { problem: "This event has no date. Set a date on the event first." };
-  }
-  const eventName = clean(event.name);
-  if (!eventName) return { problem: "This event has no name." };
-
-  // ---- races (lowest site order becomes the primary race)
-  const sortedRaces = [...races].sort(
-    (a, b) =>
-      numberOr(a.order, 9999) - numberOr(b.order, 9999) ||
-      String(a.created_date || "").localeCompare(String(b.created_date || "")),
-  );
-  const packageRaces = [];
-  for (const race of sortedRaces) {
-    const label = clean(race.name) || "(unnamed race)";
-    const seenChecks = new Set();
-    const checks = [];
-    for (const point of Array.isArray(race.checkpoints) ? race.checkpoints : []) {
-      const id = clean(point && point.id);
-      if (!id || seenChecks.has(id)) continue;
-      seenChecks.add(id);
-      checks.push({
-        id,
-        order: checks.length + 1,
-        name: clean(point.name) || "Checkpoint " + (checks.length + 1),
-      });
-    }
-    if (checks.length === 0) {
-      warn("Race '" + label + "' has no checkpoints and was left out.");
-      continue;
-    }
-
-    const lengthResult = readRaceLength(race, label, warn);
-    if (lengthResult.problem) return { problem: lengthResult.problem };
-
-    // classes[].rows is how many race-wide rows that class uses. Pro with
-    // 1 row then A with 3 rows becomes row 1 Pro, rows 2-4 A.
-    const rows = [];
-    const seenClasses = new Set();
-    for (const entry of Array.isArray(race.classes) ? race.classes : []) {
-      const riderClass = canonicalClass(entry && entry.rider_class);
-      if (!riderClass) {
-        warn("Race '" + label + "' lists an unknown class and it was skipped.");
-        continue;
-      }
-      if (seenClasses.has(riderClass)) continue;
-      seenClasses.add(riderClass);
-      const count = classRowCount(entry && entry.rows, label, riderClass, warn);
-      for (let i = 0; i < count; i += 1) rows.push({ riderClass });
-    }
-    const startRows = rows.length
-      ? rows.map((row, index) => ({
-          id: race.id + ":row-" + (index + 1),
-          order: index + 1,
-          label: row.riderClass,
-          classes: [row.riderClass],
-        }))
-      : [
-          {
-            id: race.id + ":row-1",
-            order: 1,
-            label: "Row 1",
-            classes: [...RIDER_CLASSES],
-          },
-        ];
-    if (!rows.length)
-      warn("Race '" + label + "' has no classes, so every class is on one row.");
-
-    packageRaces.push({
-      id: String(race.id),
-      name: clean(race.name) || "Race " + (packageRaces.length + 1),
-      order: packageRaces.length + 1,
-      length: lengthResult.length,
-      rowGapSeconds: readRowGap(race, label, warn),
-      plannedStart: readPlannedStart(race, label, warn),
-      checks,
-      startRows,
-    });
-  }
-  if (packageRaces.length === 0) {
-    return {
-      problem:
-        "This event has no race with checkpoints yet. Add a race and its checkpoints on the site first.",
-    };
-  }
-  const primary = packageRaces[0];
-
-  // ---- series riders (Rider table)
-  const seriesRiders = [];
-  const seriesByNumber = new Map();
-  const ranked = [...riders].sort(
-    (a, b) =>
-      numberOr(b.series_year, 0) - numberOr(a.series_year, 0) ||
-      String(a.created_date || "").localeCompare(String(b.created_date || "")),
-  );
-  for (const rider of ranked) {
-    const status = String(rider.registration_status || "").toLowerCase();
-    if (status === "inactive" || status === "cancelled" || status === "canceled")
-      continue;
-    const number = riderNumber(rider.bike_number);
-    const riderClass = canonicalClass(rider.rider_class);
-    const name = fullName(rider.first_name, rider.last_name);
-    if (!number || !riderClass || !name) {
-      warn(
-        "Series rider " +
-          (clean(rider.bike_number) || "?") +
-          " (" +
-          (name || "no name") +
-          ") has a number or class the laptop cannot use and was left out.",
-      );
-      continue;
-    }
-    if (seriesByNumber.has(number)) {
-      warn(
-        "Series number " +
-          number +
-          " belongs to more than one rider. Only the first is sent.",
-      );
-      continue;
-    }
-    const entry = { seriesId: String(rider.id), name, number, class: riderClass };
-    seriesRiders.push(entry);
-    seriesByNumber.set(number, entry);
-  }
-  const seriesById = new Map(seriesRiders.map((r) => [r.seriesId, r]));
-
-  // ---- registrations: race-day roster first, then online pre-entries
-  const out = [];
-  const usedNumbers = new Set();
-  let unpaidCount = 0;
-
-  function addRegistration({
-    number,
-    name,
-    riderClass,
-    riderId,
-    source,
-    unpaid,
-    registeredAt,
-    assignedRows,
-  }) {
-    if (!number) {
-      warn(
-        source +
-          " '" +
-          name +
-          "' has a rider number the laptop cannot use (needs a whole number above 0) and was left out.",
-      );
-      return;
-    }
-    if (!riderClass) {
-      warn(
-        source + " #" + number + " '" + name + "' has no valid class and was left out.",
-      );
-      return;
-    }
-    if (!name) {
-      warn(source + " #" + number + " has no name and was left out.");
-      return;
-    }
-    if (unpaid && !INCLUDE_UNPAID) return;
-    if (usedNumbers.has(number)) {
-      if (source === "Roster")
-        warn("Roster number " + number + " is used twice. Only the first is sent.");
-      return;
-    }
-    const owner = seriesByNumber.get(number);
-    let seriesId = null;
-    if (owner) {
-      const sameRider = riderId ? owner.seriesId === riderId : sameName(owner.name, name);
-      if (!sameRider) {
-        warn(
-          source +
-            " #" +
-            number +
-            " '" +
-            name +
-            "' uses a number that belongs to series rider '" +
-            owner.name +
-            "'. It was left out. Fix the number on the site.",
-        );
-        return;
-      }
-      seriesId = owner.seriesId;
-    }
-    usedNumbers.add(number);
-    if (unpaid) unpaidCount += 1;
-    out.push({
-      riderNumber: number,
-      name,
-      class: riderClass,
-      seriesId,
-      registeredAt,
-      assignedRows,
-    });
-  }
-
-  for (const row of roster) {
-    addRegistration({
-      number: riderNumber(row.number),
-      name: fullName(row.first_name, row.last_name),
-      riderClass: canonicalClass(row.rider_class),
-      riderId: null,
-      source: "Roster",
-      unpaid: row.paid === false || /^unpaid$/i.test(String(row.payment || "")),
-      registeredAt: earlierCreated(
-        row,
-        findPreEntry(registrations, riderNumber(row.number)),
-        "Roster",
-        riderNumber(row.number),
-        warn,
-      ),
-      assignedRows: readAssignedRows(
-        row,
-        canonicalClass(row.rider_class),
-        packageRaces,
-        "Roster",
-        riderNumber(row.number),
-        warn,
-      ),
-    });
-  }
-  const rosterCount = out.length;
-
-  for (const reg of registrations) {
-    if (/cancel|refund/i.test(String(reg.payment_status || ""))) continue;
-    const profile = seriesById.get(String(reg.rider_id || ""));
-    const number = riderNumber(reg.bike_number) || (profile ? profile.number : null);
-    if (usedNumbers.has(number)) continue;
-    // Same person already on the roster under another number: skip.
-    if (profile && out.some((r) => r.seriesId === profile.seriesId)) continue;
-    addRegistration({
-      number,
-      name: clean(reg.rider_name) || (profile ? profile.name : ""),
-      riderClass: canonicalClass(reg.rider_class),
-      riderId: reg.rider_id ? String(reg.rider_id) : null,
-      source: "Pre-entry",
-      unpaid: !/^paid$/i.test(String(reg.payment_status || "")),
-      registeredAt: readCreated(reg.created_date, "Pre-entry", number, warn),
-      assignedRows: readAssignedRows(
-        reg,
-        canonicalClass(reg.rider_class),
-        packageRaces,
-        "Pre-entry",
-        number,
-        warn,
-      ),
-    });
-  }
-
-  for (const reg of out) {
-    for (const assignment of reg.assignedRows) {
-      const race = packageRaces.find((item) => item.id === assignment.raceId);
-      if (!race) continue;
-      const classRows = race.startRows.filter(
-        (item) => item.classes.indexOf(reg.class) !== -1,
-      );
-      if (!classRows.some((item) => item.order === assignment.row)) {
-        warn(
-          "#" +
-            reg.riderNumber +
-            " is assigned to row " +
-            assignment.row +
-            " on " +
-            race.name +
-            ", which is not a " +
-            reg.class +
-            " row. The laptop will place them by registration time on that race.",
-        );
-      }
-    }
-  }
-
-  const racePackage = {
-    schemaVersion: 1,
-    event: {
-      id: String(event.id),
-      name: eventName,
-      date,
-      length: primary.length,
-      checks: primary.checks.map((c) => ({ ...c })),
-    },
-    races: packageRaces,
-    classes: [...RIDER_CLASSES],
-    riders: seriesRiders,
-    registrations: out,
-  };
-
-  return {
-    racePackage,
-    report: {
-      eventId: String(event.id),
-      races: packageRaces.length,
-      seriesRiders: seriesRiders.length,
-      registrations: out.length,
-      fromRoster: rosterCount,
-      fromPreEntry: out.length - rosterCount,
-      unpaidIncluded: INCLUDE_UNPAID ? unpaidCount : 0,
-      warnings,
-    },
-  };
-}
-
-// ----------------------------- helpers -------------------------------------
-
-// ---------------------------------------------------------------------------
-// Race length. Confirmed Edit Race field names. Change only this function
-// if the site renames them.
-//   length_type     "time" or "laps"
-//   length_laps     number; 0 or blank means laps are not set
-//   length_minutes  minutes, counted from each row's own start
-// Example: length_type "time", length_laps 0, length_minutes 120.
-// A lap race never receives a default time limit. Blank laps means the
-// race runs until the finish.
-// ---------------------------------------------------------------------------
-function readRaceLength(race, label, warn) {
-  const type = clean(race.length_type).toLowerCase();
-  const minutes = positiveInt(race.length_minutes);
-  const laps = readOptionalCount(race.length_laps);
-
-  if (type === "time") {
-    if (!minutes) {
-      return {
-        problem:
-          "Race '" +
-          label +
-          "' is a time race but length_minutes is missing or not a whole number above 0.",
-      };
-    }
-    return { length: { mode: "time", minutes: minutes } };
-  }
-  if (type === "laps") {
-    if (laps.bad) {
-      return { problem: "Race '" + label + "' has a lap count the laptop cannot use." };
-    }
-    return { length: { mode: "laps", laps: laps.value } };
-  }
-  if (type) {
-    return {
-      problem:
-        "Race '" + label + "' has length_type '" + type + "', which is not time or laps.",
-    };
-  }
-  // length_type not filled in. Do not invent a 180 minute limit.
-  if (laps.bad) {
-    return { problem: "Race '" + label + "' has a lap count the laptop cannot use." };
-  }
-  if (minutes && laps.value) {
-    return {
-      problem:
-        "Race '" +
-        label +
-        "' has both length_minutes and length_laps but no length_type. Set length_type to time or laps.",
-    };
-  }
-  if (minutes) return { length: { mode: "time", minutes: minutes } };
-  if (laps.value) return { length: { mode: "laps", laps: laps.value } };
-  warn(
-    "Race '" +
-      label +
-      "' has no length_type. It is sent as laps until the finish, with no time limit.",
-  );
-  return { length: { mode: "laps", laps: null } };
-}
-
-function readOptionalCount(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    clean(value) === "" ||
-    value === 0 ||
-    value === "0"
-  ) {
-    return { bad: false, value: null };
-  }
-  const n = positiveInt(value);
-  if (!n) return { bad: true, value: null };
-  return { bad: false, value: n };
-}
-
-function classRowCount(value, label, riderClass, warn) {
-  if (value === null || value === undefined || clean(value) === "") return 1;
-  const count = positiveInt(value);
-  if (!count) {
-    warn(
-      "Race '" +
-        label +
-        "': " +
-        riderClass +
-        " has a row count the laptop cannot use. One row was sent.",
-    );
-    return 1;
-  }
-  if (count > MAX_CLASS_ROWS) {
-    warn(
-      "Race '" +
-        label +
-        "': " +
-        riderClass +
-        " asked for " +
-        count +
-        " rows. " +
-        MAX_CLASS_ROWS +
-        " were sent.",
-    );
-    return MAX_CLASS_ROWS;
-  }
-  return count;
-}
-
-function readRowGap(race, label, warn) {
-  const value = race.row_gap_seconds;
-  if (value === null || value === undefined || clean(value) === "") return 0;
-  const n = Number(value);
-  if (!Number.isInteger(n) || n < 0) {
-    warn("Race '" + label + "' has a row gap the laptop cannot use. No gap was sent.");
-    return 0;
-  }
-  return n;
-}
-
-function readPlannedStart(race, label, warn) {
-  let text = clean(race.start_at);
-  if (!text) return null;
-  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(text)) {
-    text = text.replace(" ", "T") + "Z";
-  }
-  const ms = Date.parse(text);
-  if (!Number.isFinite(ms)) {
-    warn(
-      "Race '" +
-        label +
-        "' has a start time the laptop cannot read. No planned start was sent.",
-    );
-    return null;
-  }
-  return new Date(ms).toISOString();
-}
-
-// ---------------------------------------------------------------------------
-// Start row is per race. Add this on ScoringRoster, and on
-// EventRegistration when a pre-entry has one:
-//   start_rows: [{ race_id: "<Race id>", row: 4 }]
-// race_id is the Race record id. row is the race-wide row number on that
-// race. Today's start_row is one number for the whole event. It is used
-// only when this class is on exactly one race.
-// ---------------------------------------------------------------------------
-function readAssignedRows(record, riderClass, packageRaces, source, number, warn) {
-  const fromList = readStartRowsList(
-    record && record.start_rows,
-    packageRaces,
-    source,
-    number,
-    warn,
-  );
-  if (fromList !== null) return fromList;
-  if (!riderClass) return [];
-
-  const raw = record && record.start_row;
-  if (raw === null || raw === undefined || clean(raw) === "") return [];
-  const single = positiveInt(raw);
-  if (!single) {
-    warn(
-      source +
-        " #" +
-        number +
-        " has a start row the laptop cannot use. They will be placed by registration time.",
-    );
-    return [];
-  }
-
-  const races = packageRaces.filter((race) =>
-    race.startRows.some((row) => row.classes.indexOf(riderClass) !== -1),
-  );
-  if (races.length === 1) return [{ raceId: races[0].id, row: single }];
-  if (races.length === 0) {
-    warn(
-      source +
-        " #" +
-        number +
-        " has start row " +
-        single +
-        ", but " +
-        riderClass +
-        " is not on a race. It was not applied.",
-    );
-    return [];
-  }
-  warn(
-    source +
-      " #" +
-      number +
-      " has one start row (" +
-      single +
-      ") but " +
-      riderClass +
-      " is in more than one race (" +
-      races.map((race) => race.name).join(", ") +
-      "). A start row is per race, so it was not applied. Add start_rows as [{ race_id, row }].",
-  );
-  return [];
-}
-
-function readStartRowsList(value, packageRaces, source, number, warn) {
-  if (value === null || value === undefined || value === "") return null;
-  if (!Array.isArray(value)) {
-    warn(
-      source + " #" + number + " has start_rows that are not a list. They were not used.",
-    );
-    return [];
-  }
-  const known = new Set(packageRaces.map((race) => String(race.id)));
-  const out = [];
-  const seen = new Set();
-  for (const entry of value) {
-    const raceId = clean(entry && (entry.race_id || entry.raceId));
-    const row = positiveInt(
-      entry && (entry.row !== undefined ? entry.row : entry.start_row),
-    );
-    if (!raceId || !row) {
-      warn(
-        source +
-          " #" +
-          number +
-          " has a start_rows entry the laptop cannot use. It was skipped.",
-      );
-      continue;
-    }
-    if (!known.has(raceId)) {
-      warn(
-        source +
-          " #" +
-          number +
-          " names race " +
-          raceId +
-          ", which is not in this download. That start row was skipped.",
-      );
-      continue;
-    }
-    if (seen.has(raceId)) {
-      warn(
-        source +
-          " #" +
-          number +
-          " has two start rows for race " +
-          raceId +
-          ". The first was kept.",
-      );
-      continue;
-    }
-    seen.add(raceId);
-    out.push({ raceId: raceId, row: row });
-  }
-  return out;
-}
-
-function findPreEntry(registrations, number) {
-  if (!number) return null;
-  for (const reg of registrations) {
-    if (/cancel|refund/i.test(String(reg.payment_status || ""))) continue;
-    if (riderNumber(reg.bike_number) === number) return reg;
-  }
-  return null;
-}
-
-function earlierCreated(rosterRow, preEntry, source, number, warn) {
-  const rosterAt = readCreated(rosterRow && rosterRow.created_date, source, number, warn);
-  const preAt = preEntry
-    ? readCreated(preEntry.created_date, "Pre-entry", number, warn)
-    : null;
-  if (!rosterAt) return preAt;
-  if (!preAt) return rosterAt;
-  return Date.parse(rosterAt) <= Date.parse(preAt) ? rosterAt : preAt;
-}
-
-function readCreated(value, source, number, warn) {
-  let text = clean(value);
-  if (!text) return null;
-  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(text)) {
-    text = text.replace(" ", "T") + "Z";
-  }
-  const ms = Date.parse(text);
-  if (!Number.isFinite(ms)) {
-    warn(
-      source +
-        " #" +
-        number +
-        " has a registration time the laptop cannot read. They sort after riders with a time.",
-    );
-    return null;
-  }
-  return new Date(ms).toISOString();
-}
-
-function clean(value) {
-  return String(value == null ? "" : value)
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function fullName(first, last) {
-  return clean(clean(first) + " " + clean(last));
-}
-
-function sameName(a, b) {
-  const x = clean(a).toLowerCase();
-  const y = clean(b).toLowerCase();
-  if (x === y) return true;
-  const xs = x.split(" ");
-  const ys = y.split(" ");
-  return xs[xs.length - 1] === ys[ys.length - 1] && xs[0][0] === ys[0][0];
-}
-
-function riderNumber(value) {
-  const text = clean(value);
-  if (!/^\d{1,6}$/.test(text)) return null;
-  const n = Number(text);
-  return n > 0 ? n : null;
-}
-
-function canonicalClass(value) {
-  const text = clean(value).toLowerCase();
-  return RIDER_CLASSES.find((c) => c.toLowerCase() === text) || null;
-}
-
-function numberOr(value, fallback) {
-  const n = Number(value);
-  return value !== null && value !== undefined && value !== "" && Number.isFinite(n)
-    ? n
-    : fallback;
-}
-
-function positiveInt(value) {
-  const n = Number(value);
-  return Number.isInteger(n) && n > 0 ? n : null;
-}
-
-function fail(status, error, message) {
-  return Response.json({ ok: false, error, message }, { status, headers: cors() });
-}
-
-function cors() {
-  return {
-    "Cache-Control": "no-store",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Authorization, Accept, Content-Type, X-App-Id",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  };
-}
-```
+````
 
 After pasting, download an event from the laptop while signed in as a director, then try again as a rider. The rider must get "This account is not a race director or admin" and the laptop must not keep that download.
 
@@ -1084,7 +301,7 @@ These come from Base44's login endpoint, not from a function you write.
 | 400  | This account was created with Google and has no password. Use Sign in with Google. |
 | 401  | That email or password is not right.                                               |
 | 403  | This email is not verified yet. Finish sign-in on the website, then try again.     |
-| 404  | Sign-in was not found. Check the app id.                                           |
+| 404  | Sign-in was not found on the site.                                                 |
 | 429  | Too many sign-in attempts. Wait a minute and try again.                            |
 
 Base44's own docs say passwords must be 8 to 72 characters. There is no documented lifetime for `access_token`, and the auth module has no refresh method. Plan on the director signing in again when a download returns 401. That can happen on the morning of the race if the token died overnight. Download the package before you leave cell service.
@@ -1102,7 +319,7 @@ The laptop opens that page with `?state=<random>&callback=http://127.0.0.1:<port
 
 The page signs the person in with Google, asks `laptopSignInCode` for a code, shows the code, and may redirect the browser at the loopback address with `code` and `state` only. It also posts `{ source: "mwhe-laptop-signin", code, state }` to `window.opener` when the laptop opened the page. It never puts `access_token` on that redirect or in that message.
 
-The code is eight characters, shown as `ABCD-EFGH`, from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no `I`, `O`, `0`, or `1`). It works once, and only with the same `state`, for two minutes. The laptop then stores the token the same way email sign-in does, and only when the role is `race_director` or `admin`.
+The code is eight characters, shown as `ABCD-EFGH`, from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no `I`, `O`, `0`, or `1`). It works once, and only with the same `state`, for ten minutes. The laptop then stores the token the same way email sign-in does, and only when the role is `race_director` or `admin`.
 
 Later, the Android phone can use the same page and the same exchange. The only callback this page may open is a loopback `/callback`. Do not add a custom URL scheme unless we change the laptop.
 
@@ -1136,126 +353,15 @@ Add Google sign-in handoff for the MWHE race laptop. Do not invent a shared API 
 
 When you are done, tell me the published URL of the page. It must be
 https://midwesthardenduro.com/laptop-signin.
-```
+````
 
 If the chat rewrites the functions, paste the code below yourself. The names have to match. The laptop calls `/functions/laptopExchangeCode` and opens `/laptop-signin`.
 
 ### laptopSignInCode
 
-```javascript
-import { createClientFromRequest } from "npm:@base44/sdk";
+Paste [`docs/base44/laptopSignInCode.js`](base44/laptopSignInCode.js) over `laptopSignInCode`. The only change from the live function is the code lifetime: 10 minutes (`TTL_MS = 600000`, `expiresInSeconds: 600`) instead of 2 minutes.
 
-const HUB_ROLES = new Set(["race_director", "admin"]);
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const STATE_OK = /^[A-Za-z0-9_-]{43,128}$/;
-const TTL_MS = 120000;
-
-export default async function (req) {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: cors() });
-  }
-  if (req.method !== "POST") {
-    return fail(404, "not_found", "This function is a POST");
-  }
-
-  let user = null;
-  try {
-    const base44 = createClientFromRequest(req);
-    user = await base44.auth.me();
-    if (!user) return fail(401, "unauthorized", "Sign in again");
-    const role = String(user.role || "")
-      .trim()
-      .toLowerCase();
-    if (!HUB_ROLES.has(role)) {
-      return fail(403, "forbidden", "This account is not a race director or admin");
-    }
-
-    const body = await req.json().catch(() => ({}));
-    const state = String(body.state || "").trim();
-    if (!STATE_OK.test(state)) {
-      return fail(400, "missing_state", "Open the sign-in page from the laptop");
-    }
-
-    const token = bearerToken(req);
-    if (!token) return fail(401, "unauthorized", "Sign in again");
-
-    await deleteOldTickets(base44, String(user.id));
-    const code = newCode();
-    const codeHash = await sha256Hex(code.replace("-", ""));
-    await base44.asServiceRole.entities.LaptopSignInTicket.create({
-      code_hash: codeHash,
-      state,
-      access_token: token,
-      expires_at: new Date(Date.now() + TTL_MS).toISOString(),
-      used: false,
-      user_id: String(user.id),
-      email: String(user.email || ""),
-      full_name: String(user.full_name || ""),
-      role,
-    });
-
-    return Response.json(
-      { ok: true, code, expiresInSeconds: 120 },
-      { status: 200, headers: cors() },
-    );
-  } catch (error) {
-    console.error("laptopSignInCode failed");
-    if (!user) return fail(401, "unauthorized", "Sign in again");
-    return fail(500, "server_error", "The sign-in code could not be created");
-  }
-}
-
-function newCode() {
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  let raw = "";
-  for (const byte of bytes) raw += ALPHABET[byte % ALPHABET.length];
-  return raw.slice(0, 4) + "-" + raw.slice(4);
-}
-
-async function deleteOldTickets(base44, userId) {
-  const rows = await base44.asServiceRole.entities.LaptopSignInTicket.filter({
-    user_id: userId,
-  });
-  const list = Array.isArray(rows) ? rows : [];
-  const now = Date.now();
-  for (const row of list) {
-    const expired = Date.parse(row.expires_at || "") <= now;
-    if (!expired && !row.used) continue;
-    await base44.asServiceRole.entities.LaptopSignInTicket.update(row.id, {
-      access_token: "",
-      used: true,
-    });
-    await base44.asServiceRole.entities.LaptopSignInTicket.delete(row.id);
-  }
-}
-
-function bearerToken(req) {
-  const header = req.headers.get("Authorization") || "";
-  const match = /^Bearer\s+(\S+)$/.exec(header);
-  return match ? match[1] : "";
-}
-
-async function sha256Hex(text) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function fail(status, error, message) {
-  return Response.json({ ok: false, error, message }, { status, headers: cors() });
-}
-
-function cors() {
-  return {
-    "Cache-Control": "no-store",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Authorization, Accept, Content-Type, X-App-Id",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  };
-}
-```
+````
 
 Check the role before `asServiceRole`. The token written into `LaptopSignInTicket` is the caller's own bearer token, read from the request. It is not a service token and not a shared key.
 
@@ -1399,7 +505,7 @@ function cors() {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   };
 }
-```
+````
 
 A wrong code, a wrong state, and an expired code all return the same 401 sentence. A wrong state does not use up the code. The laptop still refuses a `user` role if one is returned.
 
@@ -1407,154 +513,11 @@ A wrong code, a wrong state, and an expired code all return the same 401 sentenc
 
 In the page editor, keep whatever import already provides `base44` if `@/api/base44Client` is not the one this app uses. The rest can be pasted.
 
-```jsx
-import { useEffect, useState } from "react";
-import { base44 } from "@/api/base44Client";
+Paste [`docs/base44/laptop-signin.jsx`](base44/laptop-signin.jsx) over the `/laptop-signin` page. Keep the app's existing `base44` import if `@/api/base44Client` is not the one this app uses.
 
-const STATE_KEY = "mwhe_laptop_state";
-const CALLBACK_KEY = "mwhe_laptop_callback";
-const PENDING_KEY = "mwhe_laptop_pending";
+What changed: once Google has signed the director in, the page asks for the code and redirects to the laptop without a Continue click. The on-screen line is "You can close this window." The code is a smaller fallback ("Trouble signing in?") and it says ten minutes. The redirect still carries only `code` and `state`. `loginWithProvider` is still called with `/laptop-signin` only.
 
-export default function LaptopSignIn() {
-  const [message, setMessage] = useState("Checking sign-in…");
-  const [code, setCode] = useState("");
-  const [account, setAccount] = useState(null);
-
-  useEffect(() => {
-    const clean = new URL(window.location.href);
-    if (clean.searchParams.has("access_token")) {
-      clean.searchParams.delete("access_token");
-      clean.searchParams.delete("is_new_user");
-      window.history.replaceState({}, "", clean.pathname + clean.search + clean.hash);
-    }
-    const params = clean.searchParams;
-    if (params.get("state")) sessionStorage.setItem(STATE_KEY, params.get("state"));
-    if (params.has("callback")) {
-      sessionStorage.setItem(CALLBACK_KEY, params.get("callback") || "");
-    }
-    void run();
-  }, []);
-
-  async function run() {
-    const state = sessionStorage.getItem(STATE_KEY) || "";
-    if (!/^[A-Za-z0-9_-]{43,128}$/.test(state)) {
-      setMessage("Open this page from MWHE Race Scorer.");
-      return;
-    }
-    let user = null;
-    try {
-      user = await base44.auth.me();
-    } catch (error) {
-      user = null;
-    }
-    if (!user) {
-      sessionStorage.setItem(PENDING_KEY, "1");
-      base44.auth.loginWithProvider("google", "/laptop-signin");
-      return;
-    }
-    setAccount(user);
-    if (sessionStorage.getItem(PENDING_KEY) === "1") {
-      await issue(state);
-    } else {
-      setMessage(
-        "Continue to send a code to the laptop, or choose a different Google account.",
-      );
-    }
-  }
-
-  async function issue(state) {
-    setMessage("Making a code for the laptop…");
-    try {
-      const raw = await base44.functions.invoke("laptopSignInCode", { state });
-      const body = raw && raw.data && raw.data.ok !== undefined ? raw.data : raw;
-      if (!body || body.ok !== true || typeof body.code !== "string") {
-        const text = (body && body.message) || "The sign-in code could not be created";
-        setMessage(text);
-        if (window.opener && !window.opener.closed) {
-          window.opener.postMessage(
-            { source: "mwhe-laptop-signin", state, error: text },
-            "*",
-          );
-        }
-        return;
-      }
-      sessionStorage.removeItem(PENDING_KEY);
-      setCode(body.code);
-      setMessage(
-        "Type this code into MWHE Race Scorer. It works once and lasts two minutes.",
-      );
-      const handoff = { source: "mwhe-laptop-signin", code: body.code, state };
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage(handoff, "*");
-      }
-      const callback = allowedCallback(sessionStorage.getItem(CALLBACK_KEY) || "");
-      if (callback) {
-        const next = new URL(callback);
-        next.searchParams.set("code", body.code);
-        next.searchParams.set("state", state);
-        window.setTimeout(() => window.location.replace(next.toString()), 400);
-      }
-    } catch (error) {
-      const text = (error && error.data && error.data.message) || error.message;
-      const sentence = text || "The sign-in code could not be created";
-      setMessage(sentence);
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage(
-          { source: "mwhe-laptop-signin", state, error: sentence },
-          "*",
-        );
-      }
-    }
-  }
-
-  async function useDifferentAccount() {
-    sessionStorage.setItem(PENDING_KEY, "1");
-    base44.auth.logout("/laptop-signin");
-  }
-
-  return (
-    <main>
-      <h1>Sign in to the race laptop</h1>
-      <p>{message}</p>
-      {account && !code ? (
-        <p>
-          Signed in as {account.email} ({account.role}).
-        </p>
-      ) : null}
-      {code ? <p style={{ fontSize: "2rem", letterSpacing: "0.08em" }}>{code}</p> : null}
-      {account && !code ? (
-        <p>
-          <button
-            type="button"
-            onClick={() => void issue(sessionStorage.getItem(STATE_KEY) || "")}
-          >
-            Continue
-          </button>
-          <button type="button" onClick={() => void useDifferentAccount()}>
-            Use a different Google account
-          </button>
-        </p>
-      ) : null}
-    </main>
-  );
-}
-
-function allowedCallback(value) {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "http:") return "";
-    if (url.username || url.password) return "";
-    if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") return "";
-    if (url.pathname !== "/callback") return "";
-    if (url.search || url.hash) return "";
-    const port = Number(url.port);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) return "";
-    return url.toString();
-  } catch (error) {
-    return "";
-  }
-}
-```
+````
 
 `loginWithProvider` is called with `/laptop-signin` only. The state and the callback stay in `sessionStorage` on `midwesthardenduro.com` while Google and Base44 do their redirects. The first lines drop `access_token` from the address bar without copying it onto the page.
 
@@ -1628,7 +591,7 @@ try {
   Write-Host "laptopWhoAmI did not answer. The mock site has no such function. The live site should."
 }
 Remove-Variable token
-```
+````
 
 On the mock page, choose **Continue as Dana Google** or **Continue as Dana Director**. Riley Rider is refused and shows no code. Expect a line like `Signed in as google-rd@example.com, role race_director`.
 
@@ -1681,7 +644,7 @@ Your functions should send the same headers, including on errors and on `OPTIONS
 
 The app id the dev screen fills in is `mwhe-local`. Any non-empty app id works on the mock.
 
-In `pnpm dev:laptop`, Race Prep starts on the mock address. **Fill in the mock site** on Race Prep writes the address, the app id, the director email, the test password, and the event id. Sign in, then download. A rider sign-in shows the forbidden message and does not store a token.
+In `pnpm dev:laptop`, the sign-in card has a developer section, **Use the mock site**. It fills the director email and the test password. Sign in, then import an event from the list. A rider sign-in shows the forbidden message and does not store a token. There is no app id field and no event id field.
 
 **Sign in with Google** on that screen opens `http://127.0.0.1:8787/laptop-signin`. The page is not Google. Pick an account. The browser preview asks you to type the code it shows (it also accepts the code automatically when the page can talk back to the tab). The Windows app listens on `127.0.0.1` and can finish without typing. `google-rd@example.com` has no password: the email form shows the Google message, and the Google button signs that director in.
 

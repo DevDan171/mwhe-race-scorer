@@ -23,7 +23,18 @@ async function openOnce(): Promise<LaptopBackend> {
     const db = await openTauriExecutor();
     return { store: createHubStore(db), credentials: createTauriCredentialStore() };
   }
-  const { openBrowserDatabase } = await import("./browser-db");
+  const { openBrowserDatabase, readBrowserVaultKey, writeBrowserVaultKey } =
+    await import("./browser-db");
   const db = await openBrowserDatabase();
-  return { store: createHubStore(db), credentials: createMemoryCredentialStore() };
+  const memory = createMemoryCredentialStore();
+  return {
+    store: createHubStore(db),
+    credentials: {
+      readToken: () => memory.readToken(),
+      writeToken: (token) => memory.writeToken(token),
+      clearToken: () => memory.clearToken(),
+      readVaultKey: () => readBrowserVaultKey(),
+      writeVaultKey: (value) => writeBrowserVaultKey(value),
+    },
+  };
 }

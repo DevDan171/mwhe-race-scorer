@@ -16,8 +16,11 @@
 
 export const LAPTOP_SIGN_IN_PATH = "/laptop-signin";
 
-/** How long the site should keep a code. The laptop gives the same window. */
-export const SIGN_IN_CODE_TTL_SECONDS = 120;
+/**
+ * How long the site keeps a one-time code. Ten minutes, so Google sign-in
+ * in the browser can finish and hand the code back without anyone typing it.
+ */
+export const SIGN_IN_CODE_TTL_SECONDS = 600;
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 

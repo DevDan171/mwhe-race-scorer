@@ -1,7 +1,23 @@
-import { type ChangeAudit, type RaceDayState, type SiteAccount } from "@mwhe/core";
+import {
+  type ChangeAudit,
+  type EventSummary,
+  type RaceDayState,
+  type RacePackage,
+  type ReimportPreview,
+  type SeriesRiderUpload,
+  type SiteAccount,
+} from "@mwhe/core";
 import { createContext, useContext } from "react";
 
-export type ScreenId = "prep" | "setup" | "registration" | "changelog";
+export type ScreenId =
+  | "events"
+  | "setup"
+  | "registration"
+  | "lookup"
+  | "scoring"
+  | "results"
+  | "settings"
+  | "changelog";
 
 export interface HubApi {
   ready: boolean;
@@ -14,29 +30,30 @@ export interface HubApi {
   account: SiteAccount | null;
   hasToken: boolean;
   credentialStore: "windows" | "memory";
+  vaultReady: boolean;
   state: RaceDayState | null;
+  events: Record<string, RaceDayState>;
+  activeEventId: string | null;
+  pendingUploads: number;
   notice: string | null;
-  signIn: (input: {
-    operatorName: string;
-    baseUrl: string;
-    appId: string;
-    email: string;
-    password: string;
-  }) => Promise<void>;
-  signInWithGoogle: (input: {
-    operatorName: string;
-    baseUrl: string;
-    appId: string;
-    code: string;
-    state: string;
-  }) => Promise<void>;
-  saveName: (operatorName: string) => Promise<void>;
+  dismissNotice: () => void;
+  signIn: (input: { email: string; password: string }) => Promise<void>;
+  signInWithGoogle: (input: { code: string; state: string }) => Promise<void>;
   signOut: () => Promise<void>;
-  download: (eventId: string) => Promise<void>;
+  setDevSite: (baseUrl: string) => Promise<void>;
+  listEvents: () => Promise<EventSummary[]>;
+  importEvent: (eventId: string, sourceUpdatedAt: string | null) => Promise<void>;
+  selectEvent: (eventId: string) => Promise<void>;
+  fetchPackage: (eventId: string) => Promise<RacePackage>;
+  applyImported: (racePackage: RacePackage) => Promise<void>;
+  previewImported: (racePackage: RacePackage) => ReimportPreview;
+  touchEvent: (eventId: string) => Promise<void>;
   change: (
     why: string,
     update: (state: RaceDayState, audit: ChangeAudit) => RaceDayState,
   ) => Promise<void>;
+  queueSeriesUpload: (rider: SeriesRiderUpload) => Promise<void>;
+  flushUploads: () => Promise<void>;
 }
 
 export const HubContext = createContext<HubApi | null>(null);

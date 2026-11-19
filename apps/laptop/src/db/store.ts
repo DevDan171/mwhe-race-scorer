@@ -1,7 +1,9 @@
 import {
+  exportPublicRacePackage,
   MOCK_SITE_ORIGIN,
   raceDayStateSchema,
   siteAccountSchema,
+  LIVE_SITE_ORIGIN,
   type ChangelogEntry,
   type RaceDayState,
   type SiteAccount,
@@ -10,7 +12,7 @@ import {
 import { migrate } from "./migrate.js";
 import type { SqlExecutor } from "./sql.js";
 
-export const LIVE_SITE_ORIGIN = "https://midwesthardenduro.com";
+export { LIVE_SITE_ORIGIN };
 
 /** Dev builds start on the mock site. A packaged build starts on the live site. */
 export function defaultSiteOrigin(dev = import.meta.env.DEV): string {
@@ -22,12 +24,23 @@ export interface HubRecord {
   baseUrl: string;
   appId: string;
   account: SiteAccount | null;
+  /** The event open in the hub. Also present in `events`. */
   state: RaceDayState | null;
+  events: Record<string, RaceDayState>;
+  activeEventId: string | null;
+  /** AES-GCM payload for contact fields. Null when there is nothing to seal. */
+  privateCipher: string | null;
+}
+
+interface HubSave extends Omit<HubRecord, "events" | "activeEventId" | "privateCipher"> {
+  events?: Record<string, RaceDayState>;
+  activeEventId?: string | null;
+  privateCipher?: string | null;
 }
 
 export interface HubStore {
   load(): Promise<HubRecord>;
-  save(record: HubRecord): Promise<void>;
+  save(record: HubSave): Promise<void>;
 }
 
 /**
@@ -40,61 +53,136 @@ export function createHubStore(db: SqlExecutor): HubStore {
     async load() {
       await migrate(db);
       const rows = await db.all(
-        "SELECT operator_name, base_url, app_id, session_json, state_json FROM hub WHERE id = 1",
+        "SELECT operator_name, base_url, app_id, session_json, state_json, private_json FROM hub WHERE id = 1",
       );
       const row = rows[0];
       if (!row) {
-        return {
-          operatorName: null,
-          baseUrl: defaultSiteOrigin(),
-          appId: "",
-          account: null,
-          state: null,
-        };
+        return emptyRecord();
       }
-      const state = parseState(row.state_json);
-      if (state) await repairChangelog(db, state);
+      const library = parseLibrary(row.state_json);
+      if (library.state) await repairChangelog(db, library.state);
       return {
         operatorName: textOrNull(row.operator_name),
         baseUrl: textOrNull(row.base_url) ?? defaultSiteOrigin(),
         appId: textOrNull(row.app_id) ?? "",
         account: parseAccount(row.session_json),
-        state,
+        privateCipher: textOrNull(row.private_json),
+        ...library,
       };
     },
     async save(record) {
       await migrate(db);
-      const state = record.state ? raceDayStateSchema.parse(record.state) : null;
+      const library = normalizeLibrary(record);
       const operatorName = record.operatorName?.trim() || null;
       const appId = record.appId.trim() || null;
       const account = record.account ? siteAccountSchema.parse(record.account) : null;
+      const privateCipher = record.privateCipher?.trim() || null;
       await db.transaction(async () => {
         await db.run(
-          `INSERT INTO hub (id, operator_name, base_url, app_id, session_json, state_json)
-           VALUES (1, ?, ?, ?, ?, ?)
+          `INSERT INTO hub (
+             id, operator_name, base_url, app_id, session_json, state_json, private_json
+           )
+           VALUES (1, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              operator_name = excluded.operator_name,
              base_url = excluded.base_url,
              app_id = excluded.app_id,
              session_json = excluded.session_json,
-             state_json = excluded.state_json`,
+             state_json = excluded.state_json,
+             private_json = excluded.private_json`,
           [
             operatorName,
             record.baseUrl,
             appId,
             account ? JSON.stringify(account) : null,
-            state ? JSON.stringify(state) : null,
+            JSON.stringify({
+              version: 2,
+              activeEventId: library.activeEventId,
+              events: library.events,
+            }),
+            privateCipher,
           ],
         );
-        await replaceChangelog(db, state);
+        await replaceChangelog(db, library.state);
       });
     },
   };
 }
 
-function parseState(value: unknown): RaceDayState | null {
-  if (typeof value !== "string" || value.length === 0) return null;
-  return raceDayStateSchema.parse(JSON.parse(value));
+function emptyRecord(): HubRecord {
+  return {
+    operatorName: null,
+    baseUrl: defaultSiteOrigin(),
+    appId: "",
+    account: null,
+    state: null,
+    events: {},
+    activeEventId: null,
+    privateCipher: null,
+  };
+}
+
+function normalizeLibrary(record: HubSave): {
+  state: RaceDayState | null;
+  events: Record<string, RaceDayState>;
+  activeEventId: string | null;
+} {
+  const source =
+    record.events ?? (record.state ? { [record.state.race.event.id]: record.state } : {});
+  const events: Record<string, RaceDayState> = {};
+  for (const [id, state] of Object.entries(source)) {
+    events[id] = redactState(raceDayStateSchema.parse(state));
+  }
+  const activeEventId =
+    record.activeEventId ?? record.state?.race.event.id ?? Object.keys(events)[0] ?? null;
+  const state = activeEventId ? (events[activeEventId] ?? null) : null;
+  return { state, events, activeEventId: state ? activeEventId : null };
+}
+
+function redactState(state: RaceDayState): RaceDayState {
+  return raceDayStateSchema.parse({
+    ...state,
+    snapshot: exportPublicRacePackage(state.snapshot),
+    race: exportPublicRacePackage(state.race),
+  });
+}
+
+function parseLibrary(value: unknown): {
+  state: RaceDayState | null;
+  events: Record<string, RaceDayState>;
+  activeEventId: string | null;
+} {
+  if (typeof value !== "string" || value.length === 0) {
+    return { state: null, events: {}, activeEventId: null };
+  }
+  const parsed: unknown = JSON.parse(value);
+  if (isRecord(parsed) && parsed.snapshot) {
+    const state = raceDayStateSchema.parse(parsed);
+    return {
+      state,
+      events: { [state.race.event.id]: state },
+      activeEventId: state.race.event.id,
+    };
+  }
+  if (!isRecord(parsed) || !isRecord(parsed.events)) {
+    return { state: null, events: {}, activeEventId: null };
+  }
+  const events: Record<string, RaceDayState> = {};
+  for (const [id, entry] of Object.entries(parsed.events)) {
+    events[id] = raceDayStateSchema.parse(entry);
+  }
+  const requested =
+    typeof parsed.activeEventId === "string" ? parsed.activeEventId : null;
+  const activeEventId = requested && events[requested] ? requested : null;
+  return {
+    state: activeEventId ? (events[activeEventId] ?? null) : null,
+    events,
+    activeEventId,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function textOrNull(value: unknown): string | null {

@@ -29,6 +29,40 @@ export const startRowSchema = z.strictObject({
  * start. A lap race has no time limit. `laps: null` means it runs until the
  * finish.
  */
+/**
+ * Contact and emergency fields. Optional so a package from the previous
+ * getRacePackage still parses. They are stripped before results, phone
+ * rosters, exports, and changelog text. See `privacy.ts`.
+ */
+export const PRIVATE_RIDER_FIELDS = [
+  "dateOfBirth",
+  "phone",
+  "email",
+  "emergencyContactName",
+  "emergencyContactPhone",
+  "emergencyContactRelation",
+  "safetyAcknowledged",
+  "safetyAcknowledgedAt",
+] as const;
+
+export type PrivateRiderField = (typeof PRIVATE_RIDER_FIELDS)[number];
+
+const privateRiderShape = {
+  dateOfBirth: z.iso.date().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  emergencyContactName: z.string().nullable().optional(),
+  emergencyContactPhone: z.string().nullable().optional(),
+  emergencyContactRelation: z.string().nullable().optional(),
+  safetyAcknowledged: z.boolean().optional(),
+  safetyAcknowledgedAt: isoTimestampSchema.nullable().optional(),
+};
+
+/** Site `updated_date` for the re-import merge. Omitted on older packages. */
+const recordUpdatedAt = {
+  updatedAt: isoTimestampSchema.nullable().optional(),
+};
+
 export const raceLengthSchema = z.discriminatedUnion("mode", [
   z.strictObject({
     mode: z.literal("time"),
@@ -76,6 +110,7 @@ const raceObjectSchema = z
     rowGapSeconds: z.number().int().nonnegative().default(0),
     /** When row 1 leaves. Null until the site or the laptop sets it. */
     plannedStart: isoTimestampSchema.nullable().default(null),
+    ...recordUpdatedAt,
   })
   .superRefine((race, ctx) => {
     uniqueField(race.checks, (check) => check.id, ctx, "checks", "Duplicate check id");
@@ -133,6 +168,7 @@ const eventObjectSchema = z
     /** Same length as the primary race (lowest `order`). */
     length: raceLengthSchema,
     checks: z.array(checkSchema).min(1),
+    ...recordUpdatedAt,
   })
   .superRefine((event, ctx) => {
     uniqueField(event.checks, (check) => check.id, ctx, "checks", "Duplicate check id");
@@ -156,6 +192,8 @@ export const seriesRiderSchema = z.strictObject({
   name: z.string().min(1),
   number: riderNumberSchema,
   class: riderClassSchema,
+  ...recordUpdatedAt,
+  ...privateRiderShape,
 });
 
 /** A start row on one race. Row numbers are not shared across races. */
@@ -178,6 +216,15 @@ export const eventRegistrationSchema = z.strictObject({
   seriesId: z.string().min(1).nullable(),
   registeredAt: isoTimestampSchema.nullable().default(null),
   assignedRows: z.array(assignedRowSchema).default([]),
+  /**
+   * Races this rider is entered in. Omitted means every race that has a row
+   * for their class. An empty list means they are on the event and in no race.
+   */
+  enteredRaceIds: z.array(z.string().min(1)).optional(),
+  /** `paid` or `unpaid` when the site sent a payment. Not a contact field. */
+  payment: z.string().min(1).optional(),
+  ...recordUpdatedAt,
+  ...privateRiderShape,
 });
 
 /**
@@ -185,9 +232,9 @@ export const eventRegistrationSchema = z.strictObject({
  * this as the starting roster and course.
  *
  * schemaVersion stays 1. `length`, `rowGapSeconds`, `plannedStart`,
- * `registeredAt`, and `assignedRows` can be omitted. A class may be on more
- * than one row. Packages that still have `timeLimitMinutes` parse as a timed
- * race.
+ * `registeredAt`, `assignedRows`, `updatedAt`, `enteredRaceIds`, and the
+ * contact fields can be omitted. A class may be on more than one row.
+ * Packages that still have `timeLimitMinutes` parse as a timed race.
  */
 export const racePackageSchema = z
   .strictObject({

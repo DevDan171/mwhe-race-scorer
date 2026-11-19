@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 /// One Google sign-in at a time. The page on the website redirects the browser
 /// at this loopback URL with a one-time code and the state the laptop created.
 /// A token on the URL fails the attempt and is not copied into the error.
-const WAIT: Duration = Duration::from_secs(120);
+const WAIT: Duration = Duration::from_secs(600);
 
 struct Pending {
     cancel: Sender<()>,

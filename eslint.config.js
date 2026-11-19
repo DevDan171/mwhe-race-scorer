@@ -14,6 +14,7 @@ export default tseslint.config(
       "**/src-tauri/**",
       "**/android/**",
       "**/ios/**",
+      "docs/base44/**",
     ],
   },
   eslint.configs.recommended,

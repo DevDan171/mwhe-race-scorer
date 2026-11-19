@@ -24,6 +24,17 @@ Downloaded from the site before the race.
 
 The registration name and class are what results and the phone use. They may differ from the series record if someone races a different class for the day.
 
+Optional fields, omitted by older packages so `schemaVersion` stays `1`:
+
+- `updatedAt` on the event, each race, each series rider, and each registration. ISO-8601. It is the site's `updated_date`. Re-import keeps the laptop's copy when that record was edited locally after this time.
+- Contact fields on series riders and registrations: `dateOfBirth`, `phone`, `email`, `emergencyContactName`, `emergencyContactPhone`, `emergencyContactRelation`, `safetyAcknowledged`, `safetyAcknowledgedAt`.
+- `enteredRaceIds` on a registration. Omitted means every race that has a row for the rider's class.
+- `payment` on a registration, `paid` or `unpaid`.
+
+A rider can only be placed on a row whose `classes` include their class. Removing a row moves those riders to unassigned and renumbers the remaining rows from 1. Row N still leaves at `plannedStart` plus `rowGapSeconds` times (N − 1).
+
+The laptop strips the contact fields before it writes the race file and stores them in a separate AES-256-GCM payload. On Windows the key is in Credential Manager (`MWHE Race Scorer` / `rider-private-key`). The browser preview keeps that key in IndexedDB because it has no Credential Manager. Results, the phone roster, exports, and changelog text do not include the contact values.
+
 ## Phone roster
 
 `PhoneRosterRider` is a strict object: `name`, `number`, `class`. Anything else fails validation, so a series id cannot be copied onto a phone by accident.
@@ -65,7 +76,7 @@ The laptop writes one for every manual add, delete, or change.
 
 `createChangelogEntry` fills `schemaVersion`.
 
-Race setup changes use entity type `race` and the race id. Registration changes use entity type `registration`. `before` / `after` are the changed fields (`number`, `class`, `length`, row gap, planned start, checks, or start rows).
+Race setup changes use entity type `race` and the race id. Registration changes use entity type `registration`. `before` / `after` are the changed fields (`number`, `class`, `length`, row gap, planned start, checks, or start rows). They do not include phone, email, birth date, emergency contact, or the safety acknowledgement. Adding a rider does not ask for a typed reason. The entry still has who and when, and `why` is filled by the app (`Added at registration`, `Re-import from the site`, and so on).
 
 ## Race day state
 

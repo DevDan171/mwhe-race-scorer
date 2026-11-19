@@ -40,4 +40,10 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE hub ADD COLUMN session_json TEXT;
     `,
   },
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE hub ADD COLUMN private_json TEXT;
+    `,
+  },
 ];
