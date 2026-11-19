@@ -11,6 +11,7 @@ import { isTauri } from "../platform";
 import { useAppVersion } from "../use-app-version";
 import { useHub } from "../use-hub";
 import { Banner, Field } from "../ui";
+import { SignInLink } from "./SignInLink";
 import { useGoogleSignIn } from "./use-google-sign-in";
 
 const dev = import.meta.env.DEV;
@@ -57,16 +58,21 @@ export function Settings() {
               Sign in with Google
             </button>
             {google.busy ? (
-              <p className="hint">
-                Finish in the browser. The app continues by itself.{" "}
-                <button
-                  type="button"
-                  className="linkish"
-                  onClick={() => google.setShowCode(true)}
-                >
-                  Trouble signing in? Enter a code instead
-                </button>
-              </p>
+              <div className="stack">
+                <p className="hint">
+                  Finish in the browser. The app continues by itself.{" "}
+                  <button
+                    type="button"
+                    className="linkish"
+                    onClick={() => google.setShowCode(true)}
+                  >
+                    Trouble signing in? Enter a code instead
+                  </button>
+                </p>
+                {google.pageUrl ? (
+                  <SignInLink url={google.pageUrl} onError={google.reportError} />
+                ) : null}
+              </div>
             ) : null}
             {google.showCode ? (
               <div className="inline">

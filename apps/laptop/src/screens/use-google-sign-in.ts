@@ -24,6 +24,7 @@ export function useGoogleSignIn() {
   const [error, setError] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [typed, setTyped] = useState("");
+  const [pageUrl, setPageUrl] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const manual = useRef<ManualSignInCode | null>(null);
 
@@ -32,6 +33,7 @@ export function useGoogleSignIn() {
   async function start() {
     setError(null);
     setShowCode(false);
+    setPageUrl(null);
     abortRef.current?.abort();
     const abort = new AbortController();
     abortRef.current = abort;
@@ -41,7 +43,7 @@ export function useGoogleSignIn() {
     try {
       const state = createSignInState();
       let callbackUrl: string | null = null;
-      let loopback: Promise<string> | null = null;
+      let waitForCode: (() => Promise<string>) | null = null;
       if (isTauri()) {
         const listener = await startLoopbackSignIn(state);
         if (abort.signal.aborted) {
@@ -49,25 +51,31 @@ export function useGoogleSignIn() {
           return;
         }
         callbackUrl = listener.callbackUrl;
-        loopback = listener.code;
+        waitForCode = listener.waitForCode;
         abort.signal.addEventListener("abort", () => listener.cancel());
       }
-      const pageUrl = buildLaptopSignInPageUrl({
+      const page = buildLaptopSignInPageUrl({
         siteOrigin: hub.baseUrl,
         state,
         callbackUrl,
       });
+      setPageUrl(page);
       const message = watchSignInMessage({
-        siteOrigin: new URL(pageUrl).origin,
+        siteOrigin: new URL(page).origin,
         state,
         signal: abort.signal,
       });
-      void openSignInPage(pageUrl).catch((caught: unknown) => {
+      try {
+        await openSignInPage(page);
+      } catch (caught) {
         if (!abort.signal.aborted) setError(messageOf(caught));
-      });
+      }
       const code = await Promise.race([
         message,
-        takeSignInCode([loopback, typedCode.promise], abort.signal),
+        takeSignInCode(
+          [waitForCode ? waitForCode() : null, typedCode.promise],
+          abort.signal,
+        ),
       ]);
       await hub.signInWithGoogle({ code, state });
     } catch (caught) {
@@ -81,14 +89,17 @@ export function useGoogleSignIn() {
   return {
     busy,
     error,
+    pageUrl,
     showCode,
     typed,
     setTyped,
     setShowCode,
     start,
+    reportError: (message: string) => setError(message),
     cancel: () => {
       abortRef.current?.abort();
       setBusy(false);
+      setPageUrl(null);
     },
     submitCode: () => {
       const code = normalizeSignInCode(typed);

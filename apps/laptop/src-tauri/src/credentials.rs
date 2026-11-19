@@ -35,7 +35,9 @@ pub(crate) fn credential_set(token: String) -> Result<(), String> {
     if trimmed.is_empty() {
         return Err("Token is empty".to_string());
     }
-    entry()?.set_password(trimmed).map_err(|err| err.to_string())
+    entry()?
+        .set_password(trimmed)
+        .map_err(|err| err.to_string())
 }
 
 #[tauri::command]
