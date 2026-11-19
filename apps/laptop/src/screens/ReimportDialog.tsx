@@ -54,6 +54,14 @@ export function ReimportDialog({
           "Start times, rows, checks, length, and row gap match."
         }
       />
+      {preview.contactsRestored.length > 0 ? (
+        <ChangeRow
+          tone="update"
+          count={preview.contactsRestored.length}
+          title="Emergency contacts restored"
+          detail="These come back from the site and are saved with the new key. Riders added on this laptop are not in this list."
+        />
+      ) : null}
       <ChangeRow
         tone="keep"
         count={preview.raceDayKept.length}
@@ -83,9 +91,11 @@ export function ReimportDialog({
             Cancel
           </button>
           <button type="button" className="btn primary" disabled={busy} onClick={onApply}>
-            {preview.applyCount === 0
+            {preview.applyCount === 0 && preview.contactsRestored.length === 0
               ? "Close"
-              : `Apply ${preview.applyCount} change${preview.applyCount === 1 ? "" : "s"}`}
+              : preview.applyCount === 0
+                ? "Restore emergency contacts"
+                : `Apply ${preview.applyCount} change${preview.applyCount === 1 ? "" : "s"}`}
           </button>
         </div>
       </div>

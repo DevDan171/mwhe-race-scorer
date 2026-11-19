@@ -44,6 +44,8 @@ Races, riders, and emergency contacts are not stored in the program folder. They
 
 The sign-in token and the key that locks emergency contacts are in Windows Credential Manager, under the name **MWHE Race Scorer**. The emergency key is the entry `rider-private-key`. Signing out of the app removes the sign-in token only. It does not remove races or the emergency key.
 
+Installed copies before 0.2.1 did not keep that emergency key after the app closed. The races stay. Emergency contacts that came from the site come back when you re-import the event. Emergency contacts for riders added on this laptop do not. Enter those again.
+
 Close the app and open it again. The event you imported is still there.
 
 ## Update

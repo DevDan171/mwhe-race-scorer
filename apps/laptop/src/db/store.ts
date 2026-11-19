@@ -30,12 +30,21 @@ export interface HubRecord {
   activeEventId: string | null;
   /** AES-GCM payload for contact fields. Null when there is nothing to seal. */
   privateCipher: string | null;
+  /**
+   * Events whose emergency contacts could not be unlocked. Re-import clears
+   * an id after the site contacts are saved under the new key.
+   */
+  lockedContactEventIds: string[];
 }
 
-interface HubSave extends Omit<HubRecord, "events" | "activeEventId" | "privateCipher"> {
+interface HubSave extends Omit<
+  HubRecord,
+  "events" | "activeEventId" | "privateCipher" | "lockedContactEventIds"
+> {
   events?: Record<string, RaceDayState>;
   activeEventId?: string | null;
   privateCipher?: string | null;
+  lockedContactEventIds?: string[];
 }
 
 export interface HubStore {
@@ -99,6 +108,7 @@ export function createHubStore(db: SqlExecutor): HubStore {
               version: 2,
               activeEventId: library.activeEventId,
               events: library.events,
+              lockedContactEventIds: record.lockedContactEventIds ?? [],
             }),
             privateCipher,
           ],
@@ -119,6 +129,7 @@ function emptyRecord(): HubRecord {
     events: {},
     activeEventId: null,
     privateCipher: null,
+    lockedContactEventIds: [],
   };
 }
 
@@ -151,9 +162,10 @@ function parseLibrary(value: unknown): {
   state: RaceDayState | null;
   events: Record<string, RaceDayState>;
   activeEventId: string | null;
+  lockedContactEventIds: string[];
 } {
   if (typeof value !== "string" || value.length === 0) {
-    return { state: null, events: {}, activeEventId: null };
+    return { state: null, events: {}, activeEventId: null, lockedContactEventIds: [] };
   }
   const parsed: unknown = JSON.parse(value);
   if (isRecord(parsed) && parsed.snapshot) {
@@ -162,10 +174,11 @@ function parseLibrary(value: unknown): {
       state,
       events: { [state.race.event.id]: state },
       activeEventId: state.race.event.id,
+      lockedContactEventIds: lockedIds(parsed.lockedContactEventIds),
     };
   }
   if (!isRecord(parsed) || !isRecord(parsed.events)) {
-    return { state: null, events: {}, activeEventId: null };
+    return { state: null, events: {}, activeEventId: null, lockedContactEventIds: [] };
   }
   const events: Record<string, RaceDayState> = {};
   for (const [id, entry] of Object.entries(parsed.events)) {
@@ -178,7 +191,13 @@ function parseLibrary(value: unknown): {
     state: activeEventId ? (events[activeEventId] ?? null) : null,
     events,
     activeEventId,
+    lockedContactEventIds: lockedIds(parsed.lockedContactEventIds),
   };
+}
+
+function lockedIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((id): id is string => typeof id === "string" && id.length > 0);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

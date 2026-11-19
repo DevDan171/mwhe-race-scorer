@@ -110,6 +110,11 @@ export function App() {
         </header>
         <UpdatePrompt />
         <main>
+          {hub.lockedContactNote ? (
+            <div className="stack" style={{ marginBottom: 12 }}>
+              <Banner tone="info">{hub.lockedContactNote}</Banner>
+            </div>
+          ) : null}
           {hub.notice ? (
             <div className="stack" style={{ marginBottom: 12 }}>
               <Banner tone="info">{hub.notice}</Banner>

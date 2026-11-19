@@ -30,20 +30,14 @@ import { openLaptopBackend, type LaptopBackend } from "./db/open";
 import { defaultSiteOrigin } from "./db/store";
 import { isTauri } from "./platform";
 import {
-  createVaultKey,
-  exportVaultKey,
-  importVaultKey,
-  openJson,
-  sealJson,
-} from "./privacy/seal";
+  lockedContactMessage,
+  readSavedVault,
+  type SavedVault,
+} from "./privacy/locked-contacts";
+import { createVaultKey, exportVaultKey, importVaultKey, sealJson } from "./privacy/seal";
 import { appIdForSite } from "./site-config";
 import { siteFetch } from "./site-fetch";
 import { HubContext, type HubApi, type ScreenId } from "./use-hub";
-
-interface VaultFile {
-  events: Record<string, RiderPrivateRecord[]>;
-  uploads: SeriesRiderUpload[];
-}
 
 interface Session {
   operatorName: string | null;
@@ -53,6 +47,7 @@ interface Session {
   events: Record<string, RaceDayState>;
   activeEventId: string | null;
   uploads: SeriesRiderUpload[];
+  lockedContactEventIds: string[];
 }
 
 const dev = import.meta.env.DEV;
@@ -73,6 +68,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<Record<string, RaceDayState>>({});
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [uploads, setUploads] = useState<SeriesRiderUpload[]>([]);
+  const [lockedContactEventIds, setLockedContactEventIds] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const record = useRef<Session>({
     operatorName,
@@ -82,6 +78,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
     events,
     activeEventId,
     uploads,
+    lockedContactEventIds,
   });
   record.current = {
     operatorName,
@@ -91,6 +88,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
     events,
     activeEventId,
     uploads,
+    lockedContactEventIds,
   };
 
   const persist = useCallback(async (next: Session) => {
@@ -98,6 +96,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
     const key = vaultKey.current;
     if (!opened) throw new Error("The race database is not open");
     const privateCipher = key ? await sealVault(key, next.events, next.uploads) : null;
+    setLockedContactEventIds(next.lockedContactEventIds);
     const active = next.activeEventId ? (next.events[next.activeEventId] ?? null) : null;
     await opened.store.save({
       operatorName: next.operatorName,
@@ -108,6 +107,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
       events: next.events,
       activeEventId: active ? next.activeEventId : null,
       privateCipher,
+      lockedContactEventIds: next.lockedContactEventIds,
     });
     record.current = {
       ...next,
@@ -130,17 +130,12 @@ export function HubProvider({ children }: { children: ReactNode }) {
         const origin = dev ? saved.baseUrl : defaultSiteOrigin(false);
         const nextAppId = appIdForSite(origin);
         const key = await loadVaultKey(opened);
-        let vault: VaultFile = { events: {}, uploads: [] };
-        let vaultNote: string | null = null;
-        if (saved.privateCipher) {
-          try {
-            vault = parseVault(await openJson(key, saved.privateCipher));
-          } catch {
-            vaultNote =
-              "Emergency info stayed locked. The race is still here. Sign-in was not affected.";
-          }
+        const openedVault = await readSavedVault(key, saved.privateCipher);
+        const restored = restoreEvents(saved.events, openedVault.vault.events);
+        let nextLockedIds = saved.lockedContactEventIds;
+        if (openedVault.locked && nextLockedIds.length === 0) {
+          nextLockedIds = Object.keys(restored);
         }
-        const restored = restoreEvents(saved.events, vault.events);
         const token = await opened.credentials.readToken();
         if (cancelled) return;
         backend.current = opened;
@@ -152,7 +147,8 @@ export function HubProvider({ children }: { children: ReactNode }) {
           account: saved.account,
           events: restored,
           activeEventId: saved.activeEventId,
-          uploads: vault.uploads,
+          uploads: openedVault.vault.uploads,
+          lockedContactEventIds: nextLockedIds,
         };
         record.current = session;
         setVaultReady(true);
@@ -162,10 +158,10 @@ export function HubProvider({ children }: { children: ReactNode }) {
         setAccount(saved.account);
         setEvents(restored);
         setActiveEventId(saved.activeEventId);
-        setUploads(vault.uploads);
+        setUploads(openedVault.vault.uploads);
+        setLockedContactEventIds(nextLockedIds);
         setHasToken(token !== null);
         setReady(true);
-        if (vaultNote) setNotice(vaultNote);
         if (!token) return;
         const generation = epoch.current;
         const check = await confirmSession({
@@ -407,20 +403,34 @@ export function HubProvider({ children }: { children: ReactNode }) {
       const who = record.current.account?.name ?? record.current.operatorName;
       if (!current) throw new Error("Import the event before re-importing it.");
       if (!who) throw new Error("Sign in before re-importing.");
-      const preview = previewReimport(current, racePackage);
+      const restoreUnreadableContacts = record.current.lockedContactEventIds.includes(
+        racePackage.event.id,
+      );
+      const preview = previewReimport(current, racePackage, {
+        restoreUnreadableContacts,
+      });
       const entryIds = Array.from({ length: Math.max(preview.applyCount, 1) }, () =>
         crypto.randomUUID(),
       );
-      const next = applyReimport(current, racePackage, {
-        who,
-        when: new Date().toISOString(),
-        why: "Re-import from the site",
-        entryIds,
-      });
+      const next = applyReimport(
+        current,
+        racePackage,
+        {
+          who,
+          when: new Date().toISOString(),
+          why: "Re-import from the site",
+          entryIds,
+        },
+        { restoreUnreadableContacts },
+      );
+      const lockedContactEventIds = record.current.lockedContactEventIds.filter(
+        (id) => id !== next.race.event.id,
+      );
       await persist({
         ...record.current,
         events: { ...record.current.events, [next.race.event.id]: next },
         activeEventId: next.race.event.id,
+        lockedContactEventIds,
       });
       setNotice(
         preview.applyCount === 0
@@ -544,6 +554,11 @@ export function HubProvider({ children }: { children: ReactNode }) {
       events,
       activeEventId,
       pendingUploads: uploads.length,
+      lockedContactEventIds,
+      lockedContactNote: lockedContactMessage({
+        lockedEventIds: lockedContactEventIds,
+        events,
+      }),
       notice,
       dismissNotice: () => setNotice(null),
       signIn,
@@ -563,12 +578,15 @@ export function HubProvider({ children }: { children: ReactNode }) {
             riderUpdates: [],
             raceChanges: [],
             raceDayKept: [],
+            contactsRestored: [],
             removedCount: 0,
             unchangedCount: 0,
             applyCount: 0,
           };
         }
-        return previewReimport(current, racePackage);
+        return previewReimport(current, racePackage, {
+          restoreUnreadableContacts: lockedContactEventIds.includes(racePackage.event.id),
+        });
       },
       touchEvent,
       change,
@@ -589,6 +607,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
       events,
       activeEventId,
       uploads.length,
+      lockedContactEventIds,
       notice,
       signIn,
       signInWithGoogle,
@@ -622,7 +641,7 @@ async function sealVault(
   events: Record<string, RaceDayState>,
   uploads: SeriesRiderUpload[],
 ): Promise<string | null> {
-  const file: VaultFile = {
+  const file: SavedVault = {
     events: Object.fromEntries(
       Object.entries(events).map(([id, state]) => [
         id,
@@ -634,15 +653,6 @@ async function sealVault(
   const hasContact = Object.values(file.events).some((records) => records.length > 0);
   if (!hasContact && uploads.length === 0) return null;
   return sealJson(key, file);
-}
-
-function parseVault(value: unknown): VaultFile {
-  if (!value || typeof value !== "object") return { events: {}, uploads: [] };
-  const record = value as Partial<VaultFile>;
-  return {
-    events: record.events && typeof record.events === "object" ? record.events : {},
-    uploads: Array.isArray(record.uploads) ? record.uploads : [],
-  };
 }
 
 function restoreEvents(
