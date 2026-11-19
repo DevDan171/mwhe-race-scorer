@@ -6,6 +6,7 @@ import { Registration } from "./screens/Registration";
 import { Results } from "./screens/Results";
 import { RiderLookup } from "./screens/RiderLookup";
 import { Scoring } from "./screens/Scoring";
+import { Stations } from "./screens/Stations";
 import { Settings } from "./screens/Settings";
 import { SignIn } from "./screens/SignIn";
 import { UpdatePrompt } from "./screens/UpdatePrompt";
@@ -18,6 +19,7 @@ const EVENT_NAV: { id: ScreenId; label: string }[] = [
   { id: "setup", label: "Race setup" },
   { id: "registration", label: "Registration" },
   { id: "lookup", label: "Rider lookup" },
+  { id: "stations", label: "Stations" },
   { id: "scoring", label: "Scoring" },
   { id: "results", label: "Results" },
 ];
@@ -132,6 +134,7 @@ export function App() {
           {hub.screen === "setup" ? <RaceSetup /> : null}
           {hub.screen === "registration" ? <Registration /> : null}
           {hub.screen === "lookup" ? <RiderLookup /> : null}
+          {hub.screen === "stations" ? <Stations /> : null}
           {hub.screen === "scoring" ? <Scoring /> : null}
           {hub.screen === "results" ? <Results /> : null}
           {hub.screen === "settings" ? <Settings /> : null}

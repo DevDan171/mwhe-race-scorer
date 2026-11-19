@@ -130,6 +130,7 @@ describe("phone roster and sync", () => {
         uuid: "00000000-0000-4000-8000-000000000111",
         checkId: "cp3",
         deviceId: "station-out-of-range",
+        eventId: "timber-ridge-2026",
         riderNumber: 42,
         timestamp: "2026-06-14T15:30:00.000Z",
         createdAt: "2026-06-14T15:30:01.000Z",

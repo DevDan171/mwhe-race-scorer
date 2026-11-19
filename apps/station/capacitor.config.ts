@@ -5,6 +5,11 @@ const config: CapacitorConfig = {
   appName: "MWHE Station",
   webDir: "dist",
   android: {},
+  server: {
+    androidScheme: "https",
+    // The laptop hub on the travel router is http://, not https.
+    cleartext: true,
+  },
 };
 
 export default config;

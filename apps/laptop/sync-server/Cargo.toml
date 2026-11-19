@@ -1,0 +1,20 @@
+[package]
+name = "mwhe-sync-server"
+version = "0.3.0"
+edition = "2021"
+description = "Local HTTP sync hub for MWHE checkpoint phones."
+publish = false
+
+[dependencies]
+axum = "0.8"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+getrandom = "0.2"
+if-addrs = "0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "sync"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

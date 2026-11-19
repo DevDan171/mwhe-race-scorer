@@ -2,7 +2,7 @@
 
 Offline race-day scoring for the Midwest Hard Enduro series. A Windows laptop is the hub, Android phones sit at the checkpoints, and official results go to [MidwestHardEnduro.com](https://MidwestHardEnduro.com).
 
-Phase 1 is the laptop hub: download a race package, then register riders offline. The phones do not yet record punches.
+Phase 2 adds the Android check phones and their sync with the laptop. The laptop is still the hub: download a race package, register riders offline, then pair a phone to each check.
 
 ## Layout
 
@@ -10,7 +10,7 @@ Phase 1 is the laptop hub: download a race package, then register riders offline
 | --------------- | ----------------------------------------------------------------------- |
 | `packages/core` | Zod schemas, scoring, registration, the site client, and the mock site. |
 | `apps/laptop`   | Tauri 2 + React hub. SQLite, sign-in, race prep, and registration.      |
-| `apps/station`  | Capacitor + React + Vite scaffold for Android. Web bundle only for now. |
+| `apps/station`  | Capacitor + React checkpoint phone for Android.                         |
 | `docs/`         | Architecture, document formats, the Base44 API spec, and scoring rules. |
 
 ## Setup
@@ -49,7 +49,7 @@ The laptop signs in with a MidwestHardEnduro.com email and password, or with Goo
 
 `pnpm dev:laptop` starts on the mock site at `http://127.0.0.1:8787`. Run `pnpm mock:site`, open Settings (or the sign-in card's developer section), choose **Use the mock site**, and sign in as `rd@example.com` / `race-day-local`. That account is a race director. `rider@example.com` with the same password is rejected. `google-rd@example.com` has no password: the email form returns an error, and **Sign in with Google** accepts it. The event list includes Scoring Test Event and Gnaw Bone. Import one, then use Race setup, Registration, and Rider lookup. The password is only for this mock. It is not a MidwestHardEnduro.com password.
 
-The station app still renders the Timber Ridge demo roster. That fixture is not a real result.
+`pnpm dev:station` opens the phone UI at `http://localhost:1421`. `pnpm dev:laptop` also listens for that phone at `http://127.0.0.1:1420`. The Windows app listens on port 8788 on the travel-router network. Pair a phone from **Stations**. The Timber Ridge demo roster is not a real result.
 
 ## Docs
 
@@ -59,10 +59,12 @@ The station app still renders the Timber Ridge demo roster. That fixture is not 
 - [Scoring rules](docs/scoring-rules.md)
 - [Releases](docs/release.md)
 - [Install on Windows](docs/install-windows.md)
-- [Cutting a Windows release](docs/RELEASING.md)
+- [Cutting a release](docs/RELEASING.md)
+- [Station setup and race day](docs/station-guide.md)
+- [Troubleshooting](docs/troubleshooting.md)
 
-## Phase 1 status
+## Phase 2 status
 
-Done: email sign-in and Google sign-in that hands a one-time code back to the app, an event list with import and re-import, race setup with rows and class checks, offline registration, encrypted emergency contacts, rider lookup, and a changelog.
+Done: the laptop hub from Phase 1, plus checkpoint phones. A phone locks to one check, saves punches on the device, and syncs them to the laptop over the travel router. Out of range, the phone and the laptop exchange QR codes. Rider contact fields stay on the laptop.
 
-The Windows installer is built on pull requests and published from a version tag. Install steps are in [docs/install-windows.md](docs/install-windows.md). Cutting a release, updater keys, and Azure signing are in [docs/RELEASING.md](docs/RELEASING.md). The Android APK is still not built. Ubuntu CI typechecks and builds the web bundles. It does not compile the Tauri shell. Paste the files in [docs/base44/](docs/base44/) into Base44. `laptopExchangeCode` is unchanged. The live site sign-in has not been tried against MidwestHardEnduro.com yet. The mock covers the same calls.
+The Windows installer and the Android APK are built on pull requests and published from the same version tag. Install steps for Windows are in [docs/install-windows.md](docs/install-windows.md). Race-day steps for the phones are in [docs/station-guide.md](docs/station-guide.md). Cutting a release, updater keys, the Android keystore, and Azure signing are in [docs/RELEASING.md](docs/RELEASING.md). Ubuntu CI typechecks and builds the web bundles and tests the sync server. It does not compile the Tauri window. Paste the files in [docs/base44/](docs/base44/) into Base44. `laptopExchangeCode` is unchanged. The live site sign-in has not been tried against MidwestHardEnduro.com yet. The mock covers the same calls.

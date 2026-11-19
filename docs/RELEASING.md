@@ -1,4 +1,4 @@
-# Releasing the Windows laptop app
+# Releasing MWHE Race Scorer
 
 Tags are `vMAJOR.MINOR.PATCH`, for example `v0.2.0`. Pushing the tag runs `.github/workflows/release.yml`. That builds the NSIS installer on `windows-latest`, builds the web bundles, and publishes a GitHub Release with the installer attached.
 
@@ -77,6 +77,39 @@ Get-Content -Raw "$env:USERPROFILE\.tauri\mwhe-race-scorer.key" | Set-Clipboard
 Paste that into the secret and save. Then create `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` with the password from step 3. Tag the next release only after the new public key is on `main`.
 
 The repository has to stay public, or `latest.json` has to be downloadable without a login. The app does not send a GitHub token. It does not check, download, or prompt while Scoring is open or while a planned start is still inside that race’s window. A check that cannot reach GitHub changes nothing.
+
+## Android station APK
+
+The same version tag attaches the phone APK next to the Windows installer. The file name is `mwhe-station-<version>.apk` when it is signed, or `mwhe-station-<version>-debug.apk` when the keystore secrets below are missing. A missing keystore does not fail the build and does not change `latest.json`. `latest.json` is still only the Windows installer.
+
+Pull requests upload the same APK as the artifact `mwhe-station-android`.
+
+The laptop package and the station package are both `0.3.0` in this tree. Bump them together before you tag. A phone whose version does not match the laptop is refused at go-live.
+
+Create the keystore once, on your own PC. It never goes in git. `.gitignore` already ignores `*.jks` and `*.keystore`.
+
+```powershell
+keytool -genkeypair -v -keystore "$env:USERPROFILE\.android\mwhe-station.jks" -alias mwhe-station -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Remember the store password, the key password, and the alias `mwhe-station`. Then copy the keystore as base64:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.android\mwhe-station.jks")) | Set-Clipboard
+```
+
+On GitHub open **Settings → Secrets and variables → Actions → New repository secret** and add all four. If any one is missing, the release attaches the debug APK instead.
+
+| Secret                      | What to paste                                      |
+| --------------------------- | -------------------------------------------------- |
+| `ANDROID_KEYSTORE_BASE64`   | The base64 from the command above, one long line   |
+| `ANDROID_KEYSTORE_PASSWORD` | The store password                                 |
+| `ANDROID_KEY_ALIAS`         | `mwhe-station`, unless you typed a different alias |
+| `ANDROID_KEY_PASSWORD`      | The key password                                   |
+
+`keytool` comes with a JDK. Temurin 21 is a fine choice. The alias and both passwords can be the same value if you want one thing to remember. Do not leave the passwords blank.
+
+The phone install is a sideload. There is no Play Store listing. The APK's oldest Android is Android 8.
 
 ## Azure Artifact Signing later
 

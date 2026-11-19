@@ -49,18 +49,16 @@ jobs:
 
           Attached:
           - The Windows installer (NSIS, per-user). Download MWHE-Race-Scorer_<version>_x64-setup.exe.
+          - The Android station APK. mwhe-station-<version>.apk when the release keystore
+            secrets are set, otherwise mwhe-station-<version>-debug.apk. Sideload it.
+            There is no Play Store build.
           - Vite web bundles for the laptop and the station, for development.
 
           The installer is unsigned unless the Azure Artifact Signing secrets are set.
           In-app updates are published only when the Tauri updater key secrets are set
           and plugins.updater.pubkey in tauri.conf.json is the matching public key.
+          latest.json still points at the Windows installer only.
           See docs/RELEASING.md and docs/install-windows.md.
-
-          NOT BUILT — Android APK
-          apps/station has Capacitor config and a web bundle only. Still missing:
-          - The Android project (npx cap add android)
-          - Android SDK, Gradle, and a release keystore
-          - A runner that can assemble the APK
 
           Versioning: the git tag is the release version (vMAJOR.MINOR.PATCH).
           schemaVersion in @mwhe/core is independent and bumps on a breaking
@@ -77,8 +75,12 @@ jobs:
     uses: ./.github/workflows/laptop-windows.yml
     secrets: inherit
 
+  android:
+    uses: ./.github/workflows/station-android.yml
+    secrets: inherit
+
   publish:
-    needs: [web, windows]
+    needs: [web, windows, android]
     runs-on: ubuntu-latest
     steps:
       - name: Download build artifacts
@@ -108,7 +110,7 @@ jobs:
 
             Installing over an older copy keeps the races. Uninstall keeps them too, unless you check **Delete the application data**.
 
-            Web bundles for development are attached. The Android APK is not built. Details are in `NATIVE_BUILDS.txt`.
+            The checkpoint phone APK is attached as `mwhe-station-<version>.apk` when the Android signing secrets are set, or `mwhe-station-<version>-debug.apk` when they are not. Sideload it. There is no Play Store listing. Details are in `NATIVE_BUILDS.txt`.
             Tags use semantic versioning: `vMAJOR.MINOR.PATCH`.
 
       - name: Checkout the release scripts

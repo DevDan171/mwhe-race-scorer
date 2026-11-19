@@ -27,19 +27,21 @@ Phase 1 stores the race in SQLite and talks to the site for the race package:
 - Contact fields are encrypted at rest with AES-256-GCM. The race JSON in SQLite does not contain them. The key is a second Credential Manager entry, `rider-private-key`, and is not cleared on sign-out. SQLCipher was not used because the Tauri shell is not compiled in CI and the browser preview has to run the same code.
 - `signInWithPassword`, `exchangeSignInCode`, and `getRacePackage` in `@mwhe/core` are the site client. They take `fetch` so tests can call the mock site, and so the Android app can reuse them. The Tauri shell passes the native HTTP client. The loopback listener that receives the Google code is Rust in `apps/laptop/src-tauri` and is not compiled in CI.
 
-Still later:
+The laptop also runs a small HTTP server for the phones. In the Windows app that server is Rust and axum, inside the Tauri process, bound to `0.0.0.0:8788`. Ubuntu CI does not compile the Tauri shell. It does run `cargo test` for `apps/laptop/sync-server`, which is the axum listener without the window. The browser preview (`pnpm dev:laptop`) serves the same routes from Vite so a phone and the laptop can be tried on one computer. That preview listens on `http://127.0.0.1:1420` and is not what runs on race day.
 
-- an embedded HTTP server (Rust / axum) that phones sync with on the local network
+Each phone gets its own pairing secret. The laptop shows it as a QR code. The phone sends `Authorization: Bearer <secret>` on `/sync/pair`, `/sync/punches`, and `/sync/roster`. There is no shared global key. A secret is good for one phone. The server accepts a punch it has already stored as a duplicate, and a voided copy wins if it arrives later.
 
-Ubuntu CI does not compile the Tauri shell. The Windows workflow does, and it publishes an NSIS installer. The registration rules, the download client, and the SQLite store are tested in TypeScript. See [release.md](release.md) and [RELEASING.md](RELEASING.md).
+Ubuntu CI does not compile the Tauri shell. The Windows workflow does, and it publishes an NSIS installer. The registration rules, the download client, the SQLite store, and the sync rules are tested in TypeScript. See [release.md](release.md) and [RELEASING.md](RELEASING.md).
 
 ## Station
 
-Android only, Capacitor + React. A phone is locked to one check at setup. It holds a minimal roster: name, number, and class. Punches use the phone's GPS-set clock. There is no central clock.
+Android only, Capacitor + React. A phone is locked to one check at setup. It holds a minimal roster: name, number, and class. Punches use the phone's own clock. During setup the phone records its offset from the laptop clock and copies that offset onto every punch. The laptop shows the offset and warns when it reaches the configured threshold. The default is 2 seconds.
 
-If a phone cannot reach the laptop, it exports punches as QR frames another phone or the laptop can import.
+Punches are written to a file on the phone before the keypad clears. A second file keeps the previous copy. Re-syncing the same punch is safe. The screen stays on while the check is live, and a foreground service asks Android not to kill the process.
 
-Phase 0 builds the web bundle. The Android project is not generated. See [release.md](release.md).
+If a phone cannot reach the laptop, it shows its punches as one or more QR codes. The laptop scans them or takes a pasted payload. The laptop shows roster deltas since that phone's roster version as QR codes the phone scans. Chunking and reassembly live in `@mwhe/core`.
+
+The Android project is `apps/station/android`. The oldest phone is Android 8, API 26. The APK is attached to GitHub Releases. See [release.md](release.md) and [station-guide.md](station-guide.md).
 
 ## Core
 
@@ -49,4 +51,4 @@ Phase 0 builds the web bundle. The Android project is not generated. See [releas
 
 ## Time
 
-Each phone stamps punches from its own GPS-set clock. The laptop stores those timestamps as-is. Total time for a rider is the last valid punch minus that rider's start, plus penalties. Riders on the same start row share that row's clock when the race has a planned start. Row N leaves at the planned start plus the row gap times (N - 1). A start entered on the laptop replaces the row clock for that rider. A timed race counts its limit from the rider's own start. A lap race has no time limit.
+Each phone stamps punches from its own clock. The laptop stores those timestamps as-is, plus the phone's offset from the laptop at the moment the punch was saved. Total time for a rider is the last valid punch minus that rider's start, plus penalties. Riders on the same start row share that row's clock when the race has a planned start. Row N leaves at the planned start plus the row gap times (N - 1). A start entered on the laptop replaces the row clock for that rider. A timed race counts its limit from the rider's own start. A lap race has no time limit. Lap counts are not enforced.

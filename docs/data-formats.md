@@ -43,15 +43,21 @@ The laptop strips the contact fields before it writes the race file and stores t
 
 ## Punch
 
-| Field         | Meaning                                                                        |
-| ------------- | ------------------------------------------------------------------------------ |
-| `uuid`        | Identity. Re-syncing the same uuid is one punch.                               |
-| `checkId`     | Locked when the station is set up.                                             |
-| `deviceId`    | Which phone.                                                                   |
-| `riderNumber` | A number that is not on the roster is still valid. Scoring flags it `UNKNOWN`. |
-| `timestamp`   | When the punch happened, from the phone's GPS clock.                           |
-| `createdAt`   | When the phone recorded the row.                                               |
-| `voided`      | Undo. If any synced copy is voided, the punch does not score.                  |
+| Field           | Meaning                                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uuid`          | Identity. Re-syncing the same uuid is one punch.                                                                                                |
+| `checkId`       | Locked when the station is set up.                                                                                                              |
+| `deviceId`      | Which phone. A paper backup entered on the laptop uses `paper`.                                                                                 |
+| `riderNumber`   | A number that is not on the roster is still valid. Scoring flags it `UNKNOWN`.                                                                  |
+| `timestamp`     | When the punch happened, from the phone's own clock.                                                                                            |
+| `createdAt`     | When the phone recorded the row.                                                                                                                |
+| `voided`        | Undo. If any synced copy is voided, the punch does not score.                                                                                   |
+| `eventId`       | Optional. Locked at station setup. Omitted on older punches.                                                                                    |
+| `raceId`        | Optional. Locked at station setup.                                                                                                              |
+| `clockOffsetMs` | Optional. Phone clock minus laptop clock, in milliseconds, when the punch was saved. Positive means the phone was ahead. Paper punches omit it. |
+| `unknownNumber` | Optional. True when the station roster did not contain the number. The phone still saves the punch.                                             |
+
+`schemaVersion` stays `1`. The new punch fields are optional, so a punch written before them still parses.
 
 ## StartTime
 
@@ -126,7 +132,19 @@ DNF and DNS are the same status. See [scoring rules](scoring-rules.md).
 
 ### `push_punches`
 
-Station to laptop. `deviceId`, `eventId`, `sentAt`, and the full punches.
+Station to laptop. `deviceId`, `eventId`, `sentAt`, and the full punches. Optional fields the phone also sends: `raceId`, `checkId`, `appVersion`, `batteryPercent`, `rosterVersion`, and `deviceNow` (a fresh clock sample). The laptop answers with `sync_result`: how many punches were new, how many were duplicates, how many voids were applied, the roster deltas the phone still needs, and whether that phone may go live.
+
+### `station_pairing`
+
+The QR code on the laptop. `hubUrl`, event, race, check, a 64-character hex `pairingSecret`, `laptopNow`, `hubVersion`, and `clockOffsetWarnMs`. The secret is for that phone only.
+
+### `station_hello`
+
+Phone to laptop after the scan, on `POST /sync/pair`, with `Authorization: Bearer <pairingSecret>`. The laptop answers with `station_hello_ack`. `goLiveAllowed` is false, and `reason` is `app_version_mismatch`, when the versions differ. The punches are still accepted later so a late sync is not dropped. The phone is just not allowed to start recording.
+
+### `roster_sync`
+
+`GET /sync/roster?since=<version>`. The deltas newer than that version.
 
 ### `roster_delta`
 
@@ -136,4 +154,8 @@ Laptop to station. `version`, `baseVersion`, `upserts` (phone roster riders), `r
 
 For a check that is out of range. The frame carries `eventId`, `checkId`, `deviceId`, `exportedAt`, `part`, `parts`, and compact punches (`uuid`, `riderNumber`, `timestamp`, `createdAt`, `voided`). `checkId` and `deviceId` are not repeated on every punch because the station is locked to one check.
 
-`part` must be between 1 and `parts`. Phase 0 defines the frame. Splitting a large capture across several QR codes, and stitching those frames back together, is later work. `importQrCheckpointExport` turns one frame into full punches.
+`part` must be between 1 and `parts`. `encodeCheckpointQr` splits a capture so each JSON text stays within 700 characters. A single punch that cannot fit is still its own frame. `assembleCheckpointFrames` rejects a set that is missing a part or mixes two exports. `importQrCheckpointExport` turns one frame into full punches. The compact punch also carries optional `clockOffsetMs` and `unknownNumber`. The frame may carry optional `raceId`.
+
+### `qr_roster_export`
+
+The laptop's roster code for a phone that cannot reach the hub. `eventId`, `exportedAt`, `part`, `parts`, and `deltas`. The phone applies those deltas in order with `applyRosterDelta`. It does not replace the roster with a full snapshot.
