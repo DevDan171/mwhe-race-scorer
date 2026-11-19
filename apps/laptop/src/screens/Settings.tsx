@@ -8,13 +8,55 @@ import { useState } from "react";
 
 import { messageOf } from "../message";
 import { isTauri } from "../platform";
+import { UPDATE_PAUSED } from "../updates/messages";
+import { useAppUpdates, type UpdatePhase } from "../updates/use-app-updates";
 import { useAppVersion } from "../use-app-version";
 import { useHub } from "../use-hub";
 import { Banner, Field } from "../ui";
 import { SignInLink } from "./SignInLink";
+import { UpdateProgress } from "./UpdatePrompt";
 import { useGoogleSignIn } from "./use-google-sign-in";
 
 const dev = import.meta.env.DEV;
+
+function UpdateStatus() {
+  const updates = useAppUpdates();
+  const phase: UpdatePhase = updates.phase;
+  const busy = phase.kind === "checking" || phase.kind === "downloading";
+  return (
+    <div className="stack">
+      <div className="row">
+        <button
+          type="button"
+          className="btn small"
+          disabled={busy || updates.paused}
+          onClick={updates.checkNow}
+        >
+          {phase.kind === "checking" ? "Checking…" : "Check for updates"}
+        </button>
+        {phase.kind === "available" && updates.offer ? (
+          <button type="button" className="btn primary small" onClick={updates.install}>
+            Update now
+          </button>
+        ) : null}
+      </div>
+      {phase.kind === "upToDate" ? (
+        <p className="hint">This copy is up to date.</p>
+      ) : null}
+      {phase.kind === "available" && updates.offer ? (
+        <p className="hint">Version {updates.offer.version} is available.</p>
+      ) : null}
+      {phase.kind === "downloading" ? (
+        <>
+          <p className="hint">Downloading the update…</p>
+          <UpdateProgress percent={phase.percent} />
+        </>
+      ) : null}
+      {phase.kind === "error" ? <Banner tone="error">{phase.message}</Banner> : null}
+      {phase.kind === "paused" ? <p className="hint">{UPDATE_PAUSED}</p> : null}
+    </div>
+  );
+}
 
 export function Settings() {
   const hub = useHub();
@@ -198,6 +240,7 @@ export function Settings() {
           Uninstalling the program keeps them unless you check "Delete the application
           data".
         </p>
+        <UpdateStatus />
       </section>
     </div>
   );

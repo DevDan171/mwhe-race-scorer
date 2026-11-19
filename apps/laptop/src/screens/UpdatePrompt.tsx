@@ -1,75 +1,41 @@
-import { useEffect, useState } from "react";
-
-import { messageOf } from "../message";
-import { isTauri } from "../platform";
-
-interface Offer {
-  version: string;
-  notes: string;
-  install: () => Promise<void>;
-}
+import { useAppUpdates } from "../updates/use-app-updates";
 
 export function UpdatePrompt() {
-  const [offer, setOffer] = useState<Offer | null>(null);
-  const [hidden, setHidden] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isTauri()) return;
-    let cancelled = false;
-    void loadUpdate()
-      .then((next) => {
-        if (!cancelled) setOffer(next);
-      })
-      .catch(() => {
-        // No published release yet, or this build cannot verify updater signatures.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!offer || hidden) return null;
+  const updates = useAppUpdates();
+  if (!updates.bannerVisible || !updates.offer) return null;
+  const phase = updates.phase;
+  const downloading = phase.kind === "downloading";
+  const percent = phase.kind === "downloading" ? phase.percent : null;
+  const error = phase.kind === "error" ? phase.message : null;
 
   return (
     <div className="update-banner" role="status">
       <div>
-        <strong>Update available</strong>
+        <strong>Version {updates.offer.version} is available</strong>
+        <p>Your races, riders, and sign-in stay on this laptop.</p>
+        {updates.offer.notes ? <p>{updates.offer.notes}</p> : null}
         <p>
-          Version {offer.version} is ready. Your races, riders, and sign-in stay on this
-          laptop.
+          <button type="button" className="linkish" onClick={updates.openNotes}>
+            Release notes
+          </button>
         </p>
-        {offer.notes ? <p>{offer.notes}</p> : null}
+        {downloading ? <UpdateProgress percent={percent} /> : null}
         {error ? <p className="update-error">{error}</p> : null}
       </div>
       <div className="row">
         <button
           type="button"
           className="btn primary"
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            setError(null);
-            void offer
-              .install()
-              .then(async () => {
-                const { relaunch } = await import("@tauri-apps/plugin-process");
-                await relaunch();
-              })
-              .catch((caught: unknown) => {
-                setError(messageOf(caught));
-                setBusy(false);
-              });
-          }}
+          disabled={downloading}
+          onClick={updates.install}
         >
-          {busy ? "Installing…" : "Install update"}
+          {downloading ? "Downloading…" : "Update now"}
         </button>
         <button
           type="button"
           className="btn ghost small"
-          disabled={busy}
-          onClick={() => setHidden(true)}
+          disabled={downloading}
+          onClick={updates.later}
         >
           Later
         </button>
@@ -78,14 +44,17 @@ export function UpdatePrompt() {
   );
 }
 
-async function loadUpdate(): Promise<Offer | null> {
-  const { check } = await import("@tauri-apps/plugin-updater");
-  const update = await check();
-  if (!update) return null;
-  const notes = (update.body ?? "").trim();
-  return {
-    version: update.version,
-    notes: notes.length > 280 ? `${notes.slice(0, 277)}…` : notes,
-    install: () => update.downloadAndInstall(),
-  };
+export function UpdateProgress({ percent }: { percent: number | null }) {
+  return (
+    <div
+      className={percent === null ? "progress update unknown" : "progress update"}
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={percent ?? undefined}
+      aria-label="Update download"
+    >
+      <span style={percent === null ? undefined : { width: `${percent}%` }} />
+    </div>
+  );
 }

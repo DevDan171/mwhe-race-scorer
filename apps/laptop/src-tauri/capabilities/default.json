@@ -13,14 +13,16 @@
         { "url": "https://midwesthardenduro.com/*" },
         { "url": "https://*.midwesthardenduro.com/*" },
         { "url": "http://127.0.0.1:*/*" },
-        { "url": "http://localhost:*/*" }
+        { "url": "http://localhost:*/*" },
+        { "url": "https://github.com/DevDan171/mwhe-race-scorer/releases/*" }
       ]
     },
     "sql:default",
     "sql:allow-load",
     "sql:allow-execute",
     "sql:allow-select",
-    "updater:default",
+    "updater:allow-check",
+    "updater:allow-download-and-install",
     "process:allow-restart",
     {
       "identifier": "http:default",
