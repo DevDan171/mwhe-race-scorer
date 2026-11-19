@@ -1,7 +1,7 @@
 import { RIDER_CLASSES, type RiderClass } from "./classes.js";
 import type { Penalty } from "./schemas/penalty.js";
 import type { Punch } from "./schemas/punch.js";
-import { defaultRace } from "./schemas/race-package.js";
+import { defaultRace, type RaceLength, type StartRow } from "./schemas/race-package.js";
 import type { StartTime } from "./schemas/start-time.js";
 import type { ScoreRaceInput } from "./scoring/types.js";
 import { SCHEMA_VERSION } from "./version.js";
@@ -30,6 +30,12 @@ export interface TestRider {
   class: RiderClass;
   /** Null is a day-of entry with no series record. */
   seriesId?: string | null;
+  /**
+   * Row on the single test race. Omit to leave the rider unassigned.
+   * The test race id is `test-event:race`.
+   */
+  startRow?: number | null;
+  registeredAt?: string | null;
 }
 
 export function makePunch(args: {
@@ -90,6 +96,10 @@ export function makeScoreInput(
   args: {
     riders?: TestRider[];
     timeLimitMinutes?: number;
+    length?: RaceLength;
+    startRows?: StartRow[];
+    rowGapSeconds?: number;
+    plannedStart?: string | null;
     checks?: Array<{ id: string; order: number; name: string }>;
     punches?: Punch[];
     startTimes?: StartTime[];
@@ -114,6 +124,11 @@ export function makeScoreInput(
       name: rider.name,
       class: rider.class,
       seriesId,
+      registeredAt: rider.registeredAt ?? null,
+      assignedRows:
+        rider.startRow == null
+          ? []
+          : [{ raceId: "test-event:race", row: rider.startRow }],
     });
   }
 
@@ -121,9 +136,16 @@ export function makeScoreInput(
     id: "test-event",
     name: "Test Event",
     date: "2026-06-14",
-    timeLimitMinutes: args.timeLimitMinutes ?? 180,
+    length: args.length ?? {
+      mode: "time" as const,
+      minutes: args.timeLimitMinutes ?? 180,
+    },
     checks: args.checks ?? DEFAULT_CHECKS,
   };
+  const race = defaultRace(event);
+  if (args.startRows) race.startRows = args.startRows;
+  if (args.rowGapSeconds !== undefined) race.rowGapSeconds = args.rowGapSeconds;
+  if (args.plannedStart !== undefined) race.plannedStart = args.plannedStart;
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -134,7 +156,7 @@ export function makeScoreInput(
       schemaVersion: SCHEMA_VERSION,
       classes: [...RIDER_CLASSES],
       event,
-      races: [defaultRace(event)],
+      races: [race],
       riders: seriesRiders,
       registrations,
     },

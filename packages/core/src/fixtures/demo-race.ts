@@ -112,7 +112,7 @@ export function createDemoRace(): ScoreRaceInput {
         id: "timber-ridge-2026",
         name: "Round 3 — Timber Ridge",
         date: "2026-06-14",
-        timeLimitMinutes: 180,
+        length: { mode: "time", minutes: 180 },
         checks,
       },
       races: [
@@ -120,8 +120,7 @@ export function createDemoRace(): ScoreRaceInput {
           id: "timber-ridge-2026:race",
           name: "Round 3 — Timber Ridge",
           order: 1,
-          timeLimitMinutes: 180,
-          laps: 1,
+          length: { mode: "time", minutes: 180 },
           checks,
           startRows: [
             {

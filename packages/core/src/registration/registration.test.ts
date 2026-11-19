@@ -14,12 +14,16 @@ import {
   importRacePackage,
   isRiderNumberTaken,
   moveCheck,
+  addClassToStartRow,
   moveClassToStartRow,
   packageCounts,
   registerNewRider,
+  removeClassFromStartRow,
   rosterChangesSince,
   searchSeriesRiders,
-  setRaceTimeLimit,
+  setPlannedStart,
+  setRaceLength,
+  setRowGapSeconds,
   type ChangeAudit,
   type RaceDayState,
 } from "./service.js";
@@ -54,8 +58,8 @@ describe("race package import", () => {
     expect(state.snapshot).toEqual(state.race);
     expect(state.snapshot).not.toBe(state.race);
     expect(packageCounts(state.snapshot)).toEqual({
-      seriesRiders: 12,
-      eventRegistrations: 9,
+      seriesRiders: 13,
+      eventRegistrations: 10,
       races: 2,
       checks: 6,
     });
@@ -89,10 +93,12 @@ describe("event registration", () => {
       name: "Nina Cho",
       class: "Womens Pro",
       seriesId: "s-nina",
+      registeredAt: WHEN,
+      assignedRows: [],
     });
     expect(state.rosterVersion).toBe(2);
     expect(state.dayOfRegistrations).toEqual([]);
-    expect(state.snapshot.registrations).toHaveLength(9);
+    expect(state.snapshot.registrations).toHaveLength(10);
     expect(state.changelog).toHaveLength(1);
     expect(state.changelog[0]).toMatchObject({
       who: "Dana Director",
@@ -164,7 +170,7 @@ describe("new riders", () => {
         audit: audit(5),
       }),
     ).toThrow(/name is required/i);
-    expect(before.race.riders).toHaveLength(12);
+    expect(before.race.riders).toHaveLength(13);
     expect(before.rosterVersion).toBe(1);
   });
 
@@ -276,38 +282,62 @@ describe("number and class changes", () => {
 });
 
 describe("race setup changes", () => {
-  it("logs a time limit edit and keeps the event course in step with the primary race", () => {
-    const state = setRaceTimeLimit(hub(), {
+  it("logs a length edit and keeps the event course in step with the primary race", () => {
+    const state = setRaceLength(hub(), {
       raceId: "gnaw-bone-championship",
-      timeLimitMinutes: 200,
+      length: { mode: "time", minutes: 200 },
       audit: audit(13, "Course is longer this year"),
     });
     expect(state.rosterVersion).toBe(1);
-    expect(state.race.event.timeLimitMinutes).toBe(200);
+    expect(state.race.event.length).toEqual({ mode: "time", minutes: 200 });
     expect(
-      state.race.races.find((race) => race.id === "gnaw-bone-championship")
-        ?.timeLimitMinutes,
-    ).toBe(200);
-    expect(state.snapshot.event.timeLimitMinutes).toBe(180);
+      state.race.races.find((race) => race.id === "gnaw-bone-championship")?.length,
+    ).toEqual({ mode: "time", minutes: 200 });
+    expect(state.snapshot.event.length).toEqual({ mode: "time", minutes: 180 });
     expect(state.changelog[0]).toMatchObject({
       entity: { type: "race", id: "gnaw-bone-championship" },
       action: "change",
-      before: { timeLimitMinutes: 180 },
-      after: { timeLimitMinutes: 200 },
+      before: { length: { mode: "time", minutes: 180 } },
+      after: { length: { mode: "time", minutes: 200 } },
       why: "Course is longer this year",
     });
   });
 
-  it("does not copy a non-primary time limit onto the event", () => {
-    const state = setRaceTimeLimit(hub(), {
-      raceId: "gnaw-bone-youth",
-      timeLimitMinutes: 75,
-      audit: audit(14, "Youth loop added a field"),
+  it("logs a row gap and a planned start without bumping the roster", () => {
+    const gapped = setRowGapSeconds(hub(), {
+      raceId: "gnaw-bone-championship",
+      rowGapSeconds: 90,
+      audit: audit(22, "Give the rows more room"),
     });
-    expect(state.race.event.timeLimitMinutes).toBe(180);
     expect(
-      state.race.races.find((race) => race.id === "gnaw-bone-youth")?.timeLimitMinutes,
-    ).toBe(75);
+      gapped.race.races.find((race) => race.id === "gnaw-bone-championship")
+        ?.rowGapSeconds,
+    ).toBe(90);
+    expect(gapped.rosterVersion).toBe(1);
+    const started = setPlannedStart(gapped, {
+      raceId: "gnaw-bone-championship",
+      plannedStart: "2026-09-12T15:30:00.000Z",
+      audit: audit(23, "Start moved back"),
+    });
+    expect(
+      started.race.races.find((race) => race.id === "gnaw-bone-championship")
+        ?.plannedStart,
+    ).toBe("2026-09-12T15:30:00.000Z");
+  });
+
+  it("does not copy a non-primary length onto the event", () => {
+    const state = setRaceLength(hub(), {
+      raceId: "gnaw-bone-youth",
+      length: { mode: "laps", laps: null },
+      audit: audit(14, "Youth runs until the finish"),
+    });
+    expect(state.race.event.length).toEqual({ mode: "time", minutes: 180 });
+    expect(
+      state.race.races.find((race) => race.id === "gnaw-bone-youth")?.length,
+    ).toEqual({
+      mode: "laps",
+      laps: null,
+    });
   });
 
   it("logs check order and start-row class moves", () => {
@@ -339,6 +369,30 @@ describe("race setup changes", () => {
     expect(sportsman?.classes).toContain("Pro");
     expect(row.changelog[1]?.why).toBe("Pro starts with row 2 today");
     expect(row.rosterVersion).toBe(1);
+  });
+
+  it("adds a class to another row without taking it off the rows it already uses", () => {
+    const state = addClassToStartRow(hub(), {
+      raceId: "gnaw-bone-championship",
+      startRowId: "row-sportsman",
+      riderClass: "A",
+      audit: audit(20, "A also leaves with sportsman"),
+    });
+    const rows =
+      state.race.races.find((race) => race.id === "gnaw-bone-championship")?.startRows ??
+      [];
+    expect(rows.filter((startRow) => startRow.classes.includes("A"))).toHaveLength(4);
+    const removed = removeClassFromStartRow(state, {
+      raceId: "gnaw-bone-championship",
+      startRowId: "row-a-3",
+      riderClass: "A",
+      audit: audit(21, "Drop the middle A row"),
+    });
+    const after =
+      removed.race.races.find((race) => race.id === "gnaw-bone-championship")
+        ?.startRows ?? [];
+    expect(after.find((startRow) => startRow.id === "row-a-3")?.classes).toEqual([]);
+    expect(after.filter((startRow) => startRow.classes.includes("A"))).toHaveLength(3);
   });
 });
 

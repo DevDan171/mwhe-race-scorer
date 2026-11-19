@@ -63,4 +63,4 @@ The station app still renders the Timber Ridge demo roster. That fixture is not 
 
 Done: email sign-in and a mock Google sign-in against the mock site, race package download, SQLite race prep, offline registration with series-wide number checks, roster versions and deltas, and a changelog.
 
-Not done, and called out in [docs/release.md](docs/release.md): the Windows installer and the Android APK. CI typechecks and builds the web bundles. It does not compile the Tauri shell. Base44 still has to implement `getRacePackage` from [docs/site-api.md](docs/site-api.md). The live site sign-in has not been tried against MidwestHardEnduro.com yet. The mock covers the same calls.
+Not done, and called out in [docs/release.md](docs/release.md): the Windows installer and the Android APK. CI typechecks and builds the web bundles. It does not compile the Tauri shell. Paste the updated `getRacePackage` from [docs/site-api.md](docs/site-api.md) over the one on the site. It matches the live tables, including multi-row classes and race length. The live site sign-in has not been tried against MidwestHardEnduro.com yet. The mock covers the same calls.

@@ -8,11 +8,17 @@ Timestamps are ISO-8601 with an offset and millisecond precision, for example `2
 
 Downloaded from the site before the race.
 
-- `event`: `id`, `name`, `date`, `timeLimitMinutes`, and `checks`. Each check has `id`, `order`, and `name`. Ids and orders are unique. `timeLimitMinutes` and `checks` are the primary race's course (the race with the lowest `order`). The scoring engine still reads them from `event`.
-- `races`: one or more races. Each has `id`, `name`, `order`, `timeLimitMinutes`, `laps`, `checks`, and `startRows`. A start row has `id`, `order`, `label`, and `classes`. A class is on at most one row in a race. The primary race's checks and time limit must match `event`.
+`schemaVersion` stays `1`. `length`, the row gap, the planned start, and a rider's start row were added without a version bump because an older package that still has `timeLimitMinutes` (and the old `laps` field) still parses. Those packages are read as a timed race. The old lap count on them is not treated as a lap race, because scoring only ever used the time limit.
+
+- `event`: `id`, `name`, `date`, `length`, and `checks`. Each check has `id`, `order`, and `name`. Ids and orders are unique. `length` and `checks` are the primary race's course (the race with the lowest `order`). The scoring engine still reads them from `event`.
+- `length`: one choice. `{ "mode": "time", "minutes": 120 }` or `{ "mode": "laps", "laps": 2 }`. `laps: null` means the race runs until the finish and has no time limit. A timed race counts the minutes from each row's own start.
+- `races`: one or more races. Each has `id`, `name`, `order`, `length`, `rowGapSeconds`, `plannedStart`, `checks`, and `startRows`. The primary race's checks and length must match `event`.
+- `rowGapSeconds`: whole seconds, 0 or more. Row N leaves at `plannedStart` plus the gap times (N - 1).
+- `plannedStart`: when row 1 leaves, or null. ISO-8601 with an offset.
+- `startRows`: at least one row. `id`, `order`, `label`, and `classes`. `order` is the row number across the whole race, starting at 1. A class may be on more than one row (A on rows 2, 3, and 4). The same class is not listed twice on one row.
 - `classes`: the official class list, in canonical order. See `RIDER_CLASSES` in `packages/core/src/classes.ts`.
 - `riders`: series master list. `seriesId`, `name`, `number`, `class`. Rider numbers are unique across the series, not just inside a class. Series ids are unique.
-- `registrations`: who is in this event. `riderNumber`, `name`, `class`, `seriesId`.
+- `registrations`: who is in this event. `riderNumber`, `name`, `class`, `seriesId`, `registeredAt`, `assignedRows`. `registeredAt` is when they signed up, or null. `assignedRows` is `{ raceId, row }` for each race that assigned a start row. A start row is per race. An empty list means the laptop places them by registration time. See [scoring rules](scoring-rules.md).
 
 `seriesId` is null for a day-of entry. A day-of number cannot collide with a series rider. A non-null `seriesId` must be the series rider who owns that number.
 
@@ -38,7 +44,7 @@ The registration name and class are what results and the phone use. They may dif
 
 ## StartTime
 
-One start per rider, edited on the laptop: `riderNumber`, `startedAt`. If scoring sees more than one, the last one wins and a warning is returned.
+One start per rider, edited on the laptop: `riderNumber`, `startedAt`. If scoring sees more than one, the last one wins and a warning is returned. When the laptop has not entered one, scoring uses the rider's row clock. A row clock exists only when the race has a planned start.
 
 ## Penalty
 
@@ -59,7 +65,7 @@ The laptop writes one for every manual add, delete, or change.
 
 `createChangelogEntry` fills `schemaVersion`.
 
-Race setup changes use entity type `race` and the race id. Registration changes use entity type `registration`. `before` / `after` are the changed fields (`number`, `class`, `timeLimitMinutes`, checks, or start rows).
+Race setup changes use entity type `race` and the race id. Registration changes use entity type `registration`. `before` / `after` are the changed fields (`number`, `class`, `length`, row gap, planned start, checks, or start rows).
 
 ## Race day state
 

@@ -1,4 +1,4 @@
-import type { Check } from "../schemas/race-package.js";
+import { primaryRace, type Check } from "../schemas/race-package.js";
 import type { Disqualification, Penalty } from "../schemas/penalty.js";
 import type { Punch } from "../schemas/punch.js";
 import type {
@@ -10,6 +10,7 @@ import type {
 import { resultsPayloadSchema } from "../schemas/results.js";
 import type { StartTime } from "../schemas/start-time.js";
 import { PROTEST_WINDOW_MINUTES, SCHEMA_VERSION } from "../version.js";
+import { planStartOrder } from "./start-order.js";
 import { parseIsoMs, secondsBetween } from "./time.js";
 import {
   scoreRaceInputSchema,
@@ -41,6 +42,16 @@ export function scoreRace(input: ScoreRaceInput): ScoreRaceResult {
   const warnings: ScoringWarning[] = [];
   const checksById = new Map(parsed.race.event.checks.map((check) => [check.id, check]));
   const starts = resolveStarts(parsed.startTimes, warnings);
+  const course = primaryRace(parsed.race.races);
+  const plan = planStartOrder(course, parsed.race.registrations);
+  warnings.push(...plan.warnings);
+  const derivedStarts = new Map<number, string>();
+  for (const row of plan.rows) {
+    if (!row.startedAt) continue;
+    for (const rider of row.riders) derivedStarts.set(rider.riderNumber, row.startedAt);
+  }
+  const timeLimitMinutes =
+    parsed.race.event.length.mode === "time" ? parsed.race.event.length.minutes : null;
   const disqualifications = resolveDisqualifications(parsed.disqualifications, warnings);
   const punches = dedupePunches(parsed.punches, warnings);
   const punchesByRider = groupBy(punches, (punch) => punch.riderNumber);
@@ -65,10 +76,10 @@ export function scoreRace(input: ScoreRaceInput): ScoreRaceResult {
         registration: registered.get(riderNumber),
         punches: punchesByRider.get(riderNumber) ?? [],
         penalties: penaltiesByRider.get(riderNumber) ?? [],
-        start: starts.get(riderNumber),
+        start: startForRider(riderNumber, starts, derivedStarts),
         disqualification: disqualifications.get(riderNumber),
         checksById,
-        timeLimitMinutes: parsed.race.event.timeLimitMinutes,
+        timeLimitMinutes,
         warnings,
       }),
     );
@@ -111,6 +122,26 @@ function resolveStarts(
     starts.set(start.riderNumber, start);
   }
   return starts;
+}
+
+/**
+ * A start entered on the laptop wins. Otherwise the rider uses their row's
+ * clock, which is null until the race has a planned start.
+ */
+function startForRider(
+  riderNumber: number,
+  starts: Map<number, StartTime>,
+  derivedStarts: Map<number, string>,
+): StartTime | undefined {
+  const explicit = starts.get(riderNumber);
+  if (explicit) return explicit;
+  const derived = derivedStarts.get(riderNumber);
+  if (!derived) return undefined;
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    riderNumber,
+    startedAt: derived,
+  };
 }
 
 function resolveDisqualifications(
@@ -162,7 +193,8 @@ interface ScoreRiderArgs {
   start: StartTime | undefined;
   disqualification: Disqualification | undefined;
   checksById: Map<string, Check>;
-  timeLimitMinutes: number;
+  /** Null on a lap race. There is no clock, including when laps were left blank. */
+  timeLimitMinutes: number | null;
   warnings: ScoringWarning[];
 }
 
@@ -207,7 +239,12 @@ function scoreRider(args: ScoreRiderArgs): ScoredRider {
   }
 
   const startMs = parseIsoMs(args.start.startedAt);
-  const limitMs = startMs + args.timeLimitMinutes * 60_000;
+  // A timed race counts the limit from this rider's own start, which is
+  // their row's clock unless the laptop entered a different one.
+  const limitMs =
+    args.timeLimitMinutes === null
+      ? Number.POSITIVE_INFINITY
+      : startMs + args.timeLimitMinutes * 60_000;
   const known: Array<{ punch: Punch; timestampMs: number }> = [];
 
   for (const punch of args.punches) {

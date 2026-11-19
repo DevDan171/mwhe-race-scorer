@@ -78,7 +78,7 @@ describe("hub sqlite", () => {
     expect(loaded.account?.role).toBe("race_director");
     expect(loaded.state?.rosterVersion).toBe(2);
     expect(loaded.state?.dayOfRegistrations[0]?.name).toBe("Sam Ellis");
-    expect(loaded.state?.snapshot.registrations).toHaveLength(9);
+    expect(loaded.state?.snapshot.registrations).toHaveLength(10);
 
     const rows = await (
       await createSqlJsExecutor({ bytes: db.exportBytes() })

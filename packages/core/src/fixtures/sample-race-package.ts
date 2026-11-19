@@ -34,6 +34,7 @@ export function createSampleRacePackage(): RacePackage {
   const riders = [
     rider("s-alex", "Alex Hargrove", 1, "Pro"),
     rider("s-blake", "Blake Iverson", 7, "Pro"),
+    rider("s-avery", "Avery Quinn", 33, "A"),
     rider("s-casey", "Casey Nguyen", 42, "A"),
     rider("s-dana", "Dana Brooks", 55, "A"),
     rider("s-erin", "Erin Vasquez", 88, "B"),
@@ -45,7 +46,10 @@ export function createSampleRacePackage(): RacePackage {
     rider("s-omar", "Omar Shah", 500, "Electric Pro"),
     rider("s-liam", "Liam Ortega", 305, "65/85"),
   ];
-  const entered = riders.slice(0, 9);
+  // Nina, Omar, and Liam stay on the series list and off the event roster.
+  const entered = riders.filter(
+    (entry) => !["s-nina", "s-omar", "s-liam"].includes(entry.seriesId),
+  );
 
   return racePackageSchema.parse({
     schemaVersion: SCHEMA_VERSION,
@@ -53,7 +57,7 @@ export function createSampleRacePackage(): RacePackage {
       id: SAMPLE_EVENT_ID,
       name: "Round 4 — Gnaw Bone",
       date: "2026-09-12",
-      timeLimitMinutes: 180,
+      length: { mode: "time", minutes: 180 },
       checks: championshipChecks,
     },
     races: [
@@ -61,20 +65,25 @@ export function createSampleRacePackage(): RacePackage {
         id: "gnaw-bone-championship",
         name: "Championship",
         order: 1,
-        timeLimitMinutes: 180,
-        laps: 1,
+        length: { mode: "time", minutes: 180 },
+        rowGapSeconds: 60,
+        plannedStart: "2026-09-12T14:00:00.000Z",
         checks: championshipChecks,
+        // Row numbers run across the race. A uses rows 2, 3, and 4.
         startRows: [
           {
             id: "row-pro",
             order: 1,
-            label: "Row 1",
-            classes: ["Pro", "A", "Womens Pro", "Electric Pro"],
+            label: "Pro",
+            classes: ["Pro", "Womens Pro", "Electric Pro"],
           },
+          { id: "row-a-2", order: 2, label: "A", classes: ["A"] },
+          { id: "row-a-3", order: 3, label: "A", classes: ["A"] },
+          { id: "row-a-4", order: 4, label: "A", classes: ["A"] },
           {
             id: "row-sportsman",
-            order: 2,
-            label: "Row 2",
+            order: 5,
+            label: "Sportsman",
             classes: ["B", "C", "+40A", "+40B", "+40C", "Womens", "Electric Sportsman"],
           },
         ],
@@ -83,8 +92,9 @@ export function createSampleRacePackage(): RacePackage {
         id: "gnaw-bone-youth",
         name: "Youth",
         order: 2,
-        timeLimitMinutes: 60,
-        laps: 2,
+        length: { mode: "laps", laps: 2 },
+        rowGapSeconds: 0,
+        plannedStart: null,
         checks: [
           { id: "y1", order: 1, name: "Youth 1" },
           { id: "y2", order: 2, name: "Youth 2" },
@@ -101,11 +111,16 @@ export function createSampleRacePackage(): RacePackage {
     ],
     classes: [...RIDER_CLASSES],
     riders,
-    registrations: entered.map((entry) => ({
+    registrations: entered.map((entry, index) => ({
       riderNumber: entry.number,
       name: entry.name,
       class: entry.class,
       seriesId: entry.seriesId,
+      // Signup order, not number order. Avery is before Casey.
+      registeredAt: `2026-07-${String(index + 1).padStart(2, "0")}T12:00:00.000Z`,
+      // Dana's class is only on the championship, so her row is that race.
+      assignedRows:
+        entry.number === 55 ? [{ raceId: "gnaw-bone-championship", row: 4 }] : [],
     })),
   });
 }

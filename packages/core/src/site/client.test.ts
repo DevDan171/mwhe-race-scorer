@@ -68,8 +68,8 @@ describe("getRacePackage", () => {
       });
       expect(racePackage.event.id).toBe(SAMPLE_EVENT_ID);
       expect(packageCounts(racePackage)).toEqual({
-        seriesRiders: 12,
-        eventRegistrations: 9,
+        seriesRiders: 13,
+        eventRegistrations: 10,
         races: 2,
         checks: 6,
       });

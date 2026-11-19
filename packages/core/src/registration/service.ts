@@ -8,8 +8,10 @@ import { dayOfRegistrationSchema, type DayOfRegistration } from "../schemas/day-
 import { isoTimestampSchema, schemaVersionSchema } from "../schemas/common.js";
 import {
   racePackageSchema,
+  sameRaceLength,
   type Check,
   type Race,
+  type RaceLength,
   type RacePackage,
   type SeriesRider,
   type StartRow,
@@ -238,6 +240,8 @@ export function addSeriesRiderToEvent(
     name: rider.name,
     class: rider.class,
     seriesId: rider.seriesId,
+    registeredAt: input.audit.when,
+    assignedRows: [],
   };
   return commitRoster(state, input.audit, {
     race: {
@@ -304,6 +308,8 @@ export function registerNewRider(
     name,
     class: input.class,
     seriesId,
+    registeredAt: input.audit.when,
+    assignedRows: [],
   };
   const dayOf = dayOfRegistrationSchema.parse({
     seriesId,
@@ -417,45 +423,64 @@ export function changeRiderClass(
   });
 }
 
-export function setRaceTimeLimit(
+export function setRaceLength(
   state: RaceDayState,
-  input: { raceId: string; timeLimitMinutes: number; audit: ChangeAudit },
+  input: { raceId: string; length: RaceLength; audit: ChangeAudit },
 ): RaceDayState {
-  if (!Number.isInteger(input.timeLimitMinutes) || input.timeLimitMinutes < 1) {
-    throw new RegistrationError(
-      "invalid_number",
-      "Time limit must be a whole number of minutes, at least 1",
-    );
-  }
+  assertRaceLength(input.length);
   const current = findRace(state, input.raceId);
-  if (current.timeLimitMinutes === input.timeLimitMinutes) {
-    throw new RegistrationError("no_change", "That is already the time limit");
+  if (sameRaceLength(current.length, input.length)) {
+    throw new RegistrationError("no_change", "That is already the race length");
   }
   return commitRace(state, input.audit, input.raceId, {
-    before: { timeLimitMinutes: current.timeLimitMinutes },
-    after: { timeLimitMinutes: input.timeLimitMinutes },
-    update: (race) => ({ ...race, timeLimitMinutes: input.timeLimitMinutes }),
+    before: { length: current.length },
+    after: { length: input.length },
+    update: (race) => ({ ...race, length: input.length }),
   });
 }
 
-export function setRaceLaps(
+export function setRowGapSeconds(
   state: RaceDayState,
-  input: { raceId: string; laps: number; audit: ChangeAudit },
+  input: { raceId: string; rowGapSeconds: number; audit: ChangeAudit },
 ): RaceDayState {
-  if (!Number.isInteger(input.laps) || input.laps < 1) {
+  if (!Number.isInteger(input.rowGapSeconds) || input.rowGapSeconds < 0) {
     throw new RegistrationError(
       "invalid_number",
-      "Laps must be a whole number, at least 1",
+      "Row gap must be a whole number of seconds, 0 or more",
     );
   }
   const current = findRace(state, input.raceId);
-  if (current.laps === input.laps) {
-    throw new RegistrationError("no_change", "That is already the lap count");
+  if (current.rowGapSeconds === input.rowGapSeconds) {
+    throw new RegistrationError("no_change", "That is already the row gap");
   }
   return commitRace(state, input.audit, input.raceId, {
-    before: { laps: current.laps },
-    after: { laps: input.laps },
-    update: (race) => ({ ...race, laps: input.laps }),
+    before: { rowGapSeconds: current.rowGapSeconds },
+    after: { rowGapSeconds: input.rowGapSeconds },
+    update: (race) => ({ ...race, rowGapSeconds: input.rowGapSeconds }),
+  });
+}
+
+export function setPlannedStart(
+  state: RaceDayState,
+  input: { raceId: string; plannedStart: string | null; audit: ChangeAudit },
+): RaceDayState {
+  if (
+    input.plannedStart !== null &&
+    !isoTimestampSchema.safeParse(input.plannedStart).success
+  ) {
+    throw new RegistrationError(
+      "invalid_number",
+      "Planned start must be a date and time with a timezone",
+    );
+  }
+  const current = findRace(state, input.raceId);
+  if (current.plannedStart === input.plannedStart) {
+    throw new RegistrationError("no_change", "That is already the planned start");
+  }
+  return commitRace(state, input.audit, input.raceId, {
+    before: { plannedStart: current.plannedStart },
+    after: { plannedStart: input.plannedStart },
+    update: (race) => ({ ...race, plannedStart: input.plannedStart }),
   });
 }
 
@@ -592,6 +617,95 @@ export function moveClassToStartRow(
   });
 }
 
+/** Puts the class on this row and leaves it on any other rows it already uses. */
+export function addClassToStartRow(
+  state: RaceDayState,
+  input: {
+    raceId: string;
+    startRowId: string;
+    riderClass: RiderClass;
+    audit: ChangeAudit;
+  },
+): RaceDayState {
+  return changeClassOnStartRow(state, input, "add");
+}
+
+/** Takes the class off this row only. Other rows of the same class stay. */
+export function removeClassFromStartRow(
+  state: RaceDayState,
+  input: {
+    raceId: string;
+    startRowId: string;
+    riderClass: RiderClass;
+    audit: ChangeAudit;
+  },
+): RaceDayState {
+  return changeClassOnStartRow(state, input, "remove");
+}
+
+function changeClassOnStartRow(
+  state: RaceDayState,
+  input: {
+    raceId: string;
+    startRowId: string;
+    riderClass: RiderClass;
+    audit: ChangeAudit;
+  },
+  action: "add" | "remove",
+): RaceDayState {
+  if (!RIDER_CLASSES.includes(input.riderClass)) {
+    throw new RegistrationError("missing_field", "Class is required");
+  }
+  const current = findRace(state, input.raceId);
+  const target = current.startRows.find((row) => row.id === input.startRowId);
+  if (!target) {
+    throw new RegistrationError(
+      "start_row_not_found",
+      "That start row is not on this race",
+    );
+  }
+  const already = target.classes.includes(input.riderClass);
+  if (action === "add" && already) {
+    throw new RegistrationError("no_change", "That class is already on this start row");
+  }
+  if (action === "remove" && !already) {
+    throw new RegistrationError("no_change", "That class is not on this start row");
+  }
+  const startRows = current.startRows.map((row) => {
+    if (row.id !== target.id) return row;
+    return {
+      ...row,
+      classes:
+        action === "add"
+          ? [...row.classes, input.riderClass]
+          : row.classes.filter((riderClass) => riderClass !== input.riderClass),
+    };
+  });
+  return commitRace(state, input.audit, input.raceId, {
+    before: { startRows: current.startRows.map(startRowView) },
+    after: { startRows: startRows.map(startRowView) },
+    update: (race) => ({ ...race, startRows }),
+  });
+}
+
+function assertRaceLength(length: RaceLength): void {
+  if (length.mode === "time") {
+    if (!Number.isInteger(length.minutes) || length.minutes < 1) {
+      throw new RegistrationError(
+        "invalid_number",
+        "Time limit must be a whole number of minutes, at least 1",
+      );
+    }
+    return;
+  }
+  if (length.laps !== null && (!Number.isInteger(length.laps) || length.laps < 1)) {
+    throw new RegistrationError(
+      "invalid_number",
+      "Laps must be a whole number, at least 1, or blank to run until the finish",
+    );
+  }
+}
+
 function rankMatch(rider: SeriesRider, needle: string): number {
   const number = String(rider.number);
   if (number === needle) return 0;
@@ -682,7 +796,7 @@ function syncEventCourse(race: RacePackage): RacePackage {
     ...race,
     event: {
       ...race.event,
-      timeLimitMinutes: primary.timeLimitMinutes,
+      length: primary.length,
       checks: primary.checks.map((check) => ({ ...check })),
     },
   };

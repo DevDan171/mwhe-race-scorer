@@ -8,7 +8,7 @@ Implemented by `scoreRace` in `packages/core`. The demo fixture in `createDemoRa
 2. Ignore voided punches.
 3. Ignore a punch whose timestamp is before that rider's start. Warning: `punch_before_start`.
 4. Ignore a punch whose `checkId` is not on the course. Warning: `unknown_check`.
-5. A punch at or before `start + timeLimitMinutes` counts. A punch after that is over-limit: it is shown on the row and it does not count as a check or toward total time.
+5. On a timed race, a punch at or before `start + minutes` counts. A punch after that is over-limit: it is shown on the row and it does not count as a check or toward total time. The minutes are counted from that rider's own start. A lap race has no time limit, so a punch is not over-limit for the clock. A blank lap count means the race runs until the finish.
 6. The boundary is inclusive. A punch at the exact limit counts.
 
 Checks are the distinct in-limit `checkId`s. A second punch at the same check does not add a check.
@@ -29,9 +29,30 @@ A penalty whose check is not on the course still adds to the total, with warning
 
 If the rider has no scored punch, `elapsedSeconds` and `totalTimeSeconds` stay null. Penalties are listed and do not invent a time.
 
+## Start rows
+
+Row numbers run across the whole race. Pro can be row 1, class A rows 2 through 4, and +40A row 5. A class may be on more than one of those rows.
+
+Row 1 leaves at the race's planned start. Row N leaves `(N - 1) * rowGapSeconds` later. The row number is used as written, so a missing number still leaves the gap. An empty row still holds its number. No planned start means the rows have no clock.
+
+A start row is per race. `assignedRows` lists `{ raceId, row }` for the races that assigned one. An entry is used on a race when `raceId` matches and `row` is one of that class's rows on that race. A number stored for a different race is ignored here.
+
+When this race did not assign a row, or the number is not one of this class's rows, the laptop places the rider by registration time:
+
+1. Sort the unassigned riders in the class by `registeredAt`, earliest first. A missing time sorts after every known time.
+2. The same timestamp, or two missing times, breaks by the lower rider number.
+3. Split them into contiguous blocks, one block per row of that class, as evenly as possible.
+4. Earlier rows get the extra rider when the count does not divide evenly. The earliest registrations go on the earliest row.
+5. Riders who were assigned a row on this race stay there. They are not part of the split, so one assignment does not reshuffle everyone else.
+6. Inside a row, riders line up in that same registration order.
+
+`registeredAt` is the site's `created_date` on the row that was sent. When a roster rider also has a pre-entry, the earlier of the two `created_date` values is used. A rider added on the laptop uses the time of that change.
+
+A start time entered on the laptop replaces that rider's row clock, and the time limit is then counted from the entered start.
+
 ## No start time
 
-The time limit and the elapsed time are both measured from the rider's start. Punches with no start are not scored. Warning: `missing_start_time`. The laptop has to enter a start before those punches count. Penalty seconds are recorded on the row and are not added into a total.
+The time limit and the elapsed time are both measured from the rider's start. Punches with no start are not scored. Warning: `missing_start_time`. That happens when the race has no planned start and nobody entered a start for the rider. Penalty seconds are recorded on the row and are not added into a total.
 
 ## Status
 
@@ -97,3 +118,6 @@ These are encoded so the tests have one answer. Change them in `packages/core` i
 10. Penalties do not create a time for a rider with no scored punch, and they do not apply until a start exists.
 11. Any voided copy of a uuid drops that punch.
 12. The series-points fallback when neither rider has a finish at the latest event is still open. The walk-back is a placeholder.
+13. A timed race counts its limit from each rider's own start, which is their row's clock unless a start was entered by hand.
+14. A lap race has no time limit. A blank lap count means the race runs until the finish. Scoring still counts distinct checks. A set lap count is stored and shown, and it is not enforced.
+15. Riders with no assigned start row on this race are split by registration time, earliest signup on the earliest row. A missing time sorts last. The same time breaks by the lower rider number.
