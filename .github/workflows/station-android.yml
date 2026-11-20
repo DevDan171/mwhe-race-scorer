@@ -1,0 +1,108 @@
+name: Station APK
+
+on:
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: station-apk-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the station web bundle
+        run: pnpm --filter @mwhe/station build
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Android SDK
+        run: |
+          SDK_ROOT="$HOME/android-sdk"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          curl -fsSL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+          unzip -q /tmp/cmdtools.zip -d "$SDK_ROOT/cmdline-tools"
+          mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Choose the APK version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(node -p "require('./apps/station/package.json').version")"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Use the release keystore when every secret is set
+        id: sign
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/mwhe-station.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/mwhe-station.jks" >> "$GITHUB_ENV"
+            echo "sign=true" >> "$GITHUB_OUTPUT"
+            echo "Release keystore found. Building a signed APK."
+          else
+            echo "sign=false" >> "$GITHUB_OUTPUT"
+            echo "Android keystore secrets are not all set. Building a debug APK so this job stays green."
+          fi
+
+      - name: Sync Capacitor
+        run: pnpm --filter @mwhe/station exec cap sync android
+
+      - name: Build the APK
+        working-directory: apps/station/android
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SIGN: ${{ steps.sign.outputs.sign }}
+        run: |
+          chmod +x ./gradlew
+          mkdir -p "$GITHUB_WORKSPACE/release-apk"
+          if [ "$SIGN" = "true" ]; then
+            ./gradlew assembleRelease --no-daemon -PstationVersion="$VERSION"
+            cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/release-apk/mwhe-station-${VERSION}.apk"
+          else
+            ./gradlew assembleDebug --no-daemon -PstationVersion="$VERSION"
+            cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/release-apk/mwhe-station-${VERSION}-debug.apk"
+          fi
+          ls -la "$GITHUB_WORKSPACE/release-apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mwhe-station-android
+          path: release-apk/*
+          if-no-files-found: error

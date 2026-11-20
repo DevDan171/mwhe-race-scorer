@@ -10,15 +10,22 @@ coverage
 apps/laptop/src-tauri/target
 apps/laptop/src-tauri/gen
 apps/laptop/src-tauri/ci.windows.json
+apps/laptop/sync-server/target
 
 # Tauri updater private keys. The public key belongs in tauri.conf.json.
 **/*.key
 **/*.key.pub
-apps/station/android
 apps/station/.capacitor
 apps/station/ios
+apps/station/android/.gradle
+apps/station/android/build
+apps/station/android/app/build
+apps/station/android/local.properties
+apps/station/android/captures
 *.apk
 *.aab
+*.jks
+*.keystore
 *.exe
 *.msi
 *.nsis

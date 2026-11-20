@@ -14,6 +14,7 @@ export type ScreenId =
   | "setup"
   | "registration"
   | "lookup"
+  | "stations"
   | "scoring"
   | "results"
   | "settings"

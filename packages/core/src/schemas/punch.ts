@@ -18,6 +18,19 @@ export const punchSchema = z.strictObject({
   timestamp: isoTimestampSchema,
   createdAt: isoTimestampSchema,
   voided: z.boolean(),
+  /**
+   * Locked at station setup. Optional so a paper punch entered before this
+   * field existed, and the Phase 0 fixtures, still parse.
+   */
+  eventId: z.string().min(1).optional(),
+  raceId: z.string().min(1).optional(),
+  /**
+   * Phone clock minus laptop clock, in milliseconds, at the moment this punch
+   * was saved. Positive means the phone was ahead. Paper punches omit it.
+   */
+  clockOffsetMs: z.number().int().optional(),
+  /** True when the station roster did not contain this number. Never blocks the save. */
+  unknownNumber: z.boolean().optional(),
 });
 
 export type Punch = z.infer<typeof punchSchema>;

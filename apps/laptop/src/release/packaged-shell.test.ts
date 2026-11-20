@@ -85,6 +85,7 @@ describe("packaged laptop shell", () => {
       expect.arrayContaining([
         "allow-credential-commands",
         "allow-sign-in-commands",
+        "allow-sync-commands",
         "opener:allow-open-url",
         "sql:allow-load",
         "sql:allow-execute",

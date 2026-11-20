@@ -1,10 +1,12 @@
 import { createMemoryCredentialStore, type CredentialStore } from "../auth/credentials";
 import { isTauri } from "../platform";
+import type { SqlExecutor } from "./sql";
 import { createHubStore, type HubStore } from "./store";
 
 export interface LaptopBackend {
   store: HubStore;
   credentials: CredentialStore;
+  db: SqlExecutor;
 }
 
 let opening: Promise<LaptopBackend> | null = null;
@@ -21,7 +23,7 @@ async function openOnce(): Promise<LaptopBackend> {
       import("../auth/tauri-credentials"),
     ]);
     const db = await openTauriExecutor();
-    return { store: createHubStore(db), credentials: createTauriCredentialStore() };
+    return { store: createHubStore(db), credentials: createTauriCredentialStore(), db };
   }
   const { openBrowserDatabase, readBrowserVaultKey, writeBrowserVaultKey } =
     await import("./browser-db");
@@ -29,6 +31,7 @@ async function openOnce(): Promise<LaptopBackend> {
   const memory = createMemoryCredentialStore();
   return {
     store: createHubStore(db),
+    db,
     credentials: {
       readToken: () => memory.readToken(),
       writeToken: (token) => memory.writeToken(token),

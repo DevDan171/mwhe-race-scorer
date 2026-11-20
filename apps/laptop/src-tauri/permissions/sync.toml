@@ -1,0 +1,15 @@
+[[permission]]
+identifier = "allow-sync-commands"
+description = "Run the local station sync listener and pair checkpoint phones."
+commands.allow = [
+  "sync_seed",
+  "sync_set_roster",
+  "sync_snapshot",
+  "sync_create_pairing",
+  "sync_show_pairing",
+  "sync_import_punches",
+  "sync_roster_qr",
+  "sync_set_clock_warn_ms",
+  "sync_add_punch",
+  "sync_void_punch",
+]

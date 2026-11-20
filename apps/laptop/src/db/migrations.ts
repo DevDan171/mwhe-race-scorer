@@ -46,4 +46,13 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE hub ADD COLUMN private_json TEXT;
     `,
   },
+  {
+    version: 4,
+    sql: `
+      CREATE TABLE sync_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        payload_json TEXT NOT NULL
+      );
+    `,
+  },
 ];
