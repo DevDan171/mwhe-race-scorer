@@ -5,6 +5,7 @@ import type {
   StartTime,
   StationPairing,
   StationRole,
+  StationUpdateManifest,
 } from "@mwhe/core";
 import {
   createContext,
@@ -44,6 +45,7 @@ interface SyncApi {
   setClockWarnMs: (ms: number) => Promise<void>;
   setManualStart: (start: StartTime) => Promise<void>;
   setRowClock: (start: RowStart) => Promise<void>;
+  setStationUpdate: (manifest: StationUpdateManifest, apkBase64: string) => Promise<void>;
   addPaperPunch: (punch: Punch) => Promise<void>;
   voidPunch: (uuid: string) => Promise<void>;
 }
@@ -172,6 +174,11 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     },
     async setRowClock(start) {
       await commit((client) => client.setRowClock(start));
+    },
+    async setStationUpdate(manifest, apkBase64) {
+      const client = clientRef.current;
+      if (!client) return;
+      await client.setStationUpdate(manifest, apkBase64);
     },
     async addPaperPunch(punch) {
       await commit((client) => client.addPaperPunch(punch));

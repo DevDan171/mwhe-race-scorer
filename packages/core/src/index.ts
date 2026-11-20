@@ -304,6 +304,25 @@ export {
 } from "./site/mock-catalog.js";
 
 export { scoreRace, type ScoreRaceResult } from "./scoring/engine.js";
+export {
+  GITHUB_STATION_UPDATE_NAME,
+  bytesToBase64,
+  checksumMatches,
+  chooseStationUpdate,
+  compareAppVersions,
+  downloadVerifiedApk,
+  githubLatestStationManifestUrl,
+  githubStationManifestUrl,
+  hubStationManifest,
+  isNewerRelease,
+  parseStationUpdateManifest,
+  resolveStationApkUrl,
+  sha256Hex,
+  stationApkFileName,
+  stationUpdateIsAllowed,
+  stationUpdateManifestSchema,
+  type StationUpdateManifest,
+} from "./updates/station-update.js";
 export { raceEndWarning, multiLapCount } from "./scoring/end-mode.js";
 export { assignLapPasses, type AssignedPass } from "./scoring/laps.js";
 export {

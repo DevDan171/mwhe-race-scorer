@@ -4,6 +4,7 @@ import type {
   RowStart,
   StartTime,
   StationPairing,
+  StationUpdateManifest,
 } from "@mwhe/core";
 
 import { isTauri } from "../platform";
@@ -25,6 +26,7 @@ export interface SyncClient {
   setClockWarnMs(ms: number): Promise<SyncView>;
   setManualStart(start: StartTime): Promise<SyncView>;
   setRowClock(start: RowStart): Promise<SyncView>;
+  setStationUpdate(manifest: StationUpdateManifest, apkBase64: string): Promise<void>;
   addPaperPunch(punch: Punch): Promise<SyncView>;
   voidPunch(uuid: string): Promise<SyncView>;
 }
@@ -41,6 +43,9 @@ export function wrapHost(host: SyncHost): SyncClient {
     setClockWarnMs: async (ms) => host.setClockWarnMs(ms),
     setManualStart: async (start) => host.setManualStart(start),
     setRowClock: async (start) => host.setRowClock(start),
+    setStationUpdate: async (manifest, apkBase64) => {
+      host.setStationUpdate(manifest, base64ToBytes(apkBase64));
+    },
     addPaperPunch: async (punch) => host.addPaperPunch(punch),
     voidPunch: async (uuid) => host.voidPunch(uuid),
   };
@@ -59,6 +64,8 @@ export function createHttpSyncClient(): SyncClient {
     setClockWarnMs: (ms) => post("/__mwhe/settings", { clockOffsetWarnMs: ms }),
     setManualStart: (start) => post("/__mwhe/manual-start", { start }),
     setRowClock: (start) => post("/__mwhe/row-clock", { start }),
+    setStationUpdate: (manifest, apkBase64) =>
+      post<void>("/__mwhe/station-apk", { manifest, apkBase64 }),
     addPaperPunch: (punch) => post("/__mwhe/paper", { punch }),
     voidPunch: (uuid) => post("/__mwhe/void", { uuid }),
   };
@@ -78,6 +85,8 @@ export async function createTauriSyncClient(): Promise<SyncClient> {
     setClockWarnMs: (ms) => invoke("sync_set_clock_warn_ms", { clockOffsetWarnMs: ms }),
     setManualStart: (start) => invoke("sync_set_manual_start", { start }),
     setRowClock: (start) => invoke("sync_set_row_clock", { start }),
+    setStationUpdate: (manifest, apkBase64) =>
+      invoke("sync_set_station_apk", { manifest, apkBase64 }),
     addPaperPunch: (punch) => invoke("sync_add_punch", { punch }),
     voidPunch: (uuid) => invoke("sync_void_punch", { uuid }),
   };
@@ -94,6 +103,15 @@ export async function openSyncClient(): Promise<SyncClient> {
     }
   }
   return wrapHost(createSyncHost([]));
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {

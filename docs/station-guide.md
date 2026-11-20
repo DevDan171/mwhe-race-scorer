@@ -7,7 +7,7 @@ The phone app is MWHE Station. The laptop app is MWHE Race Scorer. They have to 
 ## Before the weekend
 
 1. Install MWHE Race Scorer on the laptop. The steps are in [install-windows.md](install-windows.md).
-2. On each phone, download `mwhe-station-<version>.apk` from the same GitHub release as the laptop installer. Android will ask you to allow installs from the browser or Files. That is expected. There is no Play Store listing.
+2. On each phone, download `mwhe-station-<version>.apk` from the same GitHub release as the laptop installer. Android will ask you to allow installs from the browser or Files. That is expected. There is no Play Store listing. Phones that still have the 0.3.0 test build must uninstall that app once, then install the signed 0.4.0 APK. Android will not update a debug test build in place, and two debug builds cannot update each other.
 3. The phone needs Android 8 or newer.
 4. Set the phone's date and time to automatic, from the network or from GPS. The punch time is the phone's own clock. The laptop does not replace it.
 5. Charge the phones. Bring a battery pack for a check that sits out all day.
@@ -31,6 +31,14 @@ A phone is locked to one job when you pair it: **Start**, a **Check**, or **Fini
 **Finish.** The finish is the last checkpoint on the course. The phone is the same keypad as a check, with **Finish** on the button. On a lap race a rider can pass the finish once per lap. Every pass is saved. The laptop decides which ones count.
 
 **Checks and the finish on a lap race.** A rider can be punched at the same check on each lap. The phone still asks before a second punch inside the double-tap window (60 seconds unless you change it). The laptop also flags a repeat of the same check that is closer than 2 minutes, so it can be reviewed. It does not throw the time away.
+
+## Updating a phone
+
+When the phone is not recording, it looks for a newer signed release. On the race Wi-Fi it asks the laptop. The laptop has to have downloaded that APK earlier, while it still had internet. When the phone itself has internet, it also looks at the GitHub release. It does not ask while you are punched in and the station is live.
+
+If a newer version is there, the phone shows **Download update**. You tap it, then you tap **Install** on the Android screen. The app does not install itself. If the download is bad, or the check cannot reach the laptop or GitHub, the phone stays quiet.
+
+A debug test build says so on the setup screen and does not offer an update. Uninstall it and install the signed APK from the release.
 
 ## At the check
 

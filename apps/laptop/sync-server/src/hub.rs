@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 pub const SYNC_PORT: u16 = 8788;
@@ -147,6 +148,14 @@ pub struct Hub {
     pub manual_starts: Vec<ManualStart>,
     roster: Vec<RosterDelta>,
     pub hub_version: String,
+    station_update: Option<StationApk>,
+}
+
+#[derive(Debug, Clone)]
+struct StationApk {
+    version: String,
+    sha256: String,
+    apk: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -223,7 +232,50 @@ impl Hub {
             manual_starts: Vec::new(),
             roster: Vec::new(),
             hub_version: version.to_string(),
+            station_update: None,
         }
+    }
+
+    /// Keep the signed station APK that matches this laptop, after the checksum matches.
+    pub fn set_station_update(&mut self, manifest: Value, apk: Vec<u8>) -> Result<(), String> {
+        let version = manifest
+            .get("version")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .trim_start_matches('v')
+            .to_string();
+        let sha = manifest.get("sha256").and_then(Value::as_str).unwrap_or("").trim().to_string();
+        if version != self.hub_version.trim().trim_start_matches('v') {
+            return Err("That station APK is not this laptop's version.".into());
+        }
+        if manifest.get("debug").and_then(Value::as_bool).unwrap_or(false) {
+            return Err("A debug station build is not offered to phones.".into());
+        }
+        let actual = sha256_hex(&apk);
+        if !actual.eq_ignore_ascii_case(&sha) {
+            return Err("The station APK checksum did not match.".into());
+        }
+        self.station_update = Some(StationApk {
+            version,
+            sha256: actual,
+            apk,
+        });
+        Ok(())
+    }
+
+    pub fn station_update_manifest(&self) -> Option<Value> {
+        self.station_update.as_ref().map(|update| {
+            json!({
+                "version": update.version,
+                "url": "/sync/station-apk",
+                "sha256": update.sha256,
+            })
+        })
+    }
+
+    pub fn station_update_apk(&self) -> Option<Vec<u8>> {
+        self.station_update.as_ref().map(|update| update.apk.clone())
     }
 
     pub fn snapshot(&self, urls: &[String]) -> Snapshot {
@@ -825,6 +877,17 @@ fn merge_rider_starts(existing: Vec<RiderStart>, incoming: &[RiderStart]) -> Vec
     starts
 }
 
+pub fn decode_apk_base64(value: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .decode(value.trim())
+        .map_err(|_| "The station APK was not valid base64.".to_string())
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn new_secret() -> String {
     let mut bytes = [0u8; 32];
     getrandom::getrandom(&mut bytes).expect("pairing secret");
@@ -1235,5 +1298,27 @@ mod tests {
         assert!(versions_match("0.3.0", "v0.3.0"));
         assert!(!versions_match("0.3.0", "0.3.1"));
         assert!(!versions_match("0.3.0", "0.3.0-rc.1"));
+    }
+
+    #[test]
+    fn a_station_apk_is_served_only_when_the_checksum_matches() {
+        let mut hub = Hub::new("0.4.0");
+        let apk = b"abc".to_vec();
+        let sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        let bad = hub.set_station_update(
+            json!({"version": "0.4.0", "url": "https://example.test/a.apk", "sha256": "ab".repeat(32)}),
+            apk.clone(),
+        );
+        assert!(bad.is_err());
+        assert!(hub.station_update_manifest().is_none());
+        hub.set_station_update(
+            json!({"version": "0.4.0", "url": "https://example.test/a.apk", "sha256": sha}),
+            apk.clone(),
+        )
+        .unwrap();
+        let manifest = hub.station_update_manifest().unwrap();
+        assert_eq!(manifest["url"], "/sync/station-apk");
+        assert_eq!(manifest["sha256"], sha);
+        assert_eq!(hub.station_update_apk().unwrap(), apk);
     }
 }

@@ -18,6 +18,8 @@ pub fn router(hub: SharedHub) -> Router {
         .route("/sync/pair", post(pair))
         .route("/sync/punches", post(punches))
         .route("/sync/roster", get(roster))
+        .route("/sync/station-update", get(station_update))
+        .route("/sync/station-apk", get(station_apk))
         .layer(middleware::from_fn(cors))
         .with_state(hub)
 }
@@ -65,6 +67,31 @@ async fn roster(State(hub): State<SharedHub>, headers: HeaderMap, request: Reque
     let mut hub = hub.write().await;
     let reply = hub.handle("GET", &request.uri().to_string(), authorization(&headers), None, &now_iso());
     reply_response(reply)
+}
+
+async fn station_update(State(hub): State<SharedHub>) -> Response {
+    let guard = hub.read().await;
+    match guard.station_update_manifest() {
+        Some(body) => (StatusCode::OK, Json(body)).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "message": "No station update is cached." })),
+        )
+            .into_response(),
+    }
+}
+
+async fn station_apk(State(hub): State<SharedHub>) -> Response {
+    let bytes = hub.read().await.station_update_apk();
+    match bytes {
+        Some(apk) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/vnd.android.package-archive")],
+            apk,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 fn authorization(headers: &HeaderMap) -> Option<&str> {

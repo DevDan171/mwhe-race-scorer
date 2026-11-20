@@ -59,6 +59,18 @@ The laptop strips the contact fields before it writes the race file and stores t
 
 `schemaVersion` stays `1`. The new punch fields are optional, so a punch written before them still parses.
 
+### `station-update.json`
+
+Published on a signed GitHub Release, next to `mwhe-station-<version>.apk`. It is not a stored race document and it has no `schemaVersion`.
+
+| Field     | Meaning                                                                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `version` | `MAJOR.MINOR.PATCH` of that APK.                                                                                                                 |
+| `url`     | Where to download the APK. On GitHub this is the release asset. The laptop rewrites it to `/sync/station-apk` when it hands the file to a phone. |
+| `sha256`  | Lowercase hex sha256 of the APK bytes. A download that does not match is not installed.                                                          |
+
+`debug: true` is rejected. Debug releases do not publish this file. A phone that is live does not ask. Android still refuses an APK signed with a different certificate than the app already installed.
+
 ### Row start and rider start
 
 A start phone does not write punches. It writes two optional lists, carried on `push_punches` and on a `qr_start_export` frame:

@@ -14,4 +14,5 @@ commands.allow = [
   "sync_void_punch",
   "sync_set_manual_start",
   "sync_set_row_clock",
+  "sync_set_station_apk",
 ]

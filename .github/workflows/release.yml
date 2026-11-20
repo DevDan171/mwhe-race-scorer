@@ -58,6 +58,8 @@ jobs:
           In-app updates are published only when the Tauri updater key secrets are set
           and plugins.updater.pubkey in tauri.conf.json is the matching public key.
           latest.json still points at the Windows installer only.
+          A signed station APK also publishes station-update.json (version, url, sha256).
+          A debug APK does not, because debug builds cannot update each other.
           See docs/RELEASING.md and docs/install-windows.md.
 
           Versioning: the git tag is the release version (vMAJOR.MINOR.PATCH).
@@ -94,6 +96,25 @@ jobs:
           find release-assets -type f -exec cp -t dist-release {} +
           ls -la dist-release
           test -n "$(find dist-release -name '*-setup.exe' -print -quit)"
+          APK="$(find dist-release -name 'mwhe-station-*.apk' ! -name '*-debug.apk' -print -quit)"
+          if [ -n "$APK" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            node --input-type=module -e '
+              import { createHash } from "node:crypto";
+              import { readFileSync, writeFileSync } from "node:fs";
+              const apk = process.argv[1];
+              const name = apk.split("/").pop();
+              const sha256 = createHash("sha256").update(readFileSync(apk)).digest("hex");
+              const version = process.argv[2];
+              const tag = process.argv[3];
+              const repo = process.argv[4];
+              const url = `https://github.com/${repo}/releases/download/${tag}/${name}`;
+              writeFileSync("dist-release/station-update.json", JSON.stringify({ version, url, sha256 }));
+            ' "$APK" "$VERSION" "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY"
+            echo "Wrote station-update.json for $(basename "$APK")"
+          else
+            echo "No signed station APK, so station-update.json was not published."
+          fi
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
@@ -110,7 +131,7 @@ jobs:
 
             Installing over an older copy keeps the races. Uninstall keeps them too, unless you check **Delete the application data**.
 
-            The checkpoint phone APK is attached as `mwhe-station-<version>.apk` when the Android signing secrets are set, or `mwhe-station-<version>-debug.apk` when they are not. Sideload it. There is no Play Store listing. Details are in `NATIVE_BUILDS.txt`.
+            The checkpoint phone APK is attached as `mwhe-station-<version>.apk` when the Android signing secrets are set, or `mwhe-station-<version>-debug.apk` when they are not. A signed APK also publishes `station-update.json` (version, download URL, and sha256) so phones can update. A debug APK does not. Sideload it. There is no Play Store listing. Details are in `NATIVE_BUILDS.txt`.
             Tags use semantic versioning: `vMAJOR.MINOR.PATCH`.
 
       - name: Checkout the release scripts

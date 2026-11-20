@@ -32,6 +32,9 @@ import {
   type StationRecord,
   type StoredSyncState,
   type SyncHttpRequest,
+  hubStationManifest,
+  parseStationUpdateManifest,
+  type StationUpdateManifest,
   type SyncHub,
   type SyncSettings,
 } from "@mwhe/core";
@@ -71,6 +74,7 @@ export interface SyncHost {
   setRowClock(start: RowStart): SyncView;
   voidRowStart(uuid: string): SyncView;
   voidRiderStart(uuid: string): SyncView;
+  setStationUpdate(manifest: StationUpdateManifest, apk: Uint8Array): void;
   addPaperPunch(punch: Punch): SyncView;
   voidPunch(uuid: string): SyncView;
   handle(request: Omit<SyncHttpRequest, "laptopNow"> & { laptopNow?: string }): {
@@ -89,6 +93,7 @@ export function createSyncHost(
   now: () => string = () => new Date().toISOString(),
 ): SyncHost {
   let hub: SyncHub = emptySyncHub("0.0.0");
+  let stationApk: { manifest: StationUpdateManifest; bytes: Uint8Array } | null = null;
 
   function view(): SyncView {
     return {
@@ -205,6 +210,12 @@ export function createSyncHost(
       hub = voidRiderStart(hub, uuid);
       return view();
     },
+    setStationUpdate(manifest, apk) {
+      const parsed = parseStationUpdateManifest(manifest);
+      if (parsed.debug)
+        throw new Error("A debug station build is not offered to phones.");
+      stationApk = { manifest: parsed, bytes: apk };
+    },
     addPaperPunch(punch) {
       hub = addPunches(hub, [punchSchema.parse(punch)]).hub;
       return view();
@@ -214,6 +225,25 @@ export function createSyncHost(
       return view();
     },
     handle(request) {
+      const path = request.path.split("?")[0] ?? request.path;
+      if (request.method.toUpperCase() === "GET" && path === "/sync/station-update") {
+        if (
+          !stationApk ||
+          !stationApkMatches(stationApk.manifest.version, hub.hubVersion)
+        ) {
+          return { status: 404, body: { message: "No station update is cached." } };
+        }
+        return { status: 200, body: hubStationManifest(stationApk.manifest) };
+      }
+      if (request.method.toUpperCase() === "GET" && path === "/sync/station-apk") {
+        if (
+          !stationApk ||
+          !stationApkMatches(stationApk.manifest.version, hub.hubVersion)
+        ) {
+          return { status: 404, body: { message: "No station update is cached." } };
+        }
+        return { status: 200, body: stationApk.bytes };
+      }
       const result = handleSyncRequest(hub, {
         ...request,
         laptopNow: request.laptopNow ?? now(),
@@ -222,6 +252,10 @@ export function createSyncHost(
       return result.response;
     },
   };
+}
+
+function stationApkMatches(apkVersion: string, hubVersion: string): boolean {
+  return apkVersion === hubVersion.replace(/^v(?=\d)/, "");
 }
 
 export function storedOf(view: SyncView): StoredSyncState {

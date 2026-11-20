@@ -190,6 +190,19 @@ pub async fn sync_set_row_clock(state: State<'_, SyncApp>, start: Value) -> Resu
 }
 
 #[tauri::command]
+pub async fn sync_set_station_apk(
+    state: State<'_, SyncApp>,
+    manifest: Value,
+    apkBase64: String,
+) -> Result<(), String> {
+    let running = running(&state)?;
+    let apk = mwhe_sync_server::decode_apk_base64(&apkBase64)?;
+    let mut hub = running.hub.write().await;
+    hub.set_station_update(manifest, apk)?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn sync_void_punch(state: State<'_, SyncApp>, uuid: String) -> Result<Snapshot, String> {
     let running = running(&state)?;
     let mut hub = running.hub.write().await;

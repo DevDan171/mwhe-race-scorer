@@ -3,14 +3,17 @@ import {
   formatClockOffset,
   readRosterFrames,
   stationPairingSchema,
+  type StationUpdateManifest,
 } from "@mwhe/core";
 import { useEffect, useRef, useState } from "react";
 
 import { setStationAwake } from "./keep-awake";
 import { QrCamera } from "./qr-camera";
 import { QrImage } from "./qr-image";
+import { launchStationInstaller } from "./install-apk";
 import { Keypad } from "./screens/Keypad";
 import { StartBoard } from "./screens/Start";
+import { downloadStationApk, findStationUpdate, stationBuildIsDebug } from "./updates";
 import { openStationStorage, type KvStorage } from "./storage";
 import {
   clearSetup,
@@ -56,6 +59,9 @@ export function App() {
   const [paste, setPaste] = useState("");
   const [busy, setBusy] = useState(false);
   const [qrIndex, setQrIndex] = useState(0);
+  const [updateOffer, setUpdateOffer] = useState<StationUpdateManifest | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [debugBuild, setDebugBuild] = useState(false);
   const digitsRef = useRef(digits);
   digitsRef.current = digits;
 
@@ -80,6 +86,38 @@ export function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void stationBuildIsDebug().then((debug) => {
+      if (!cancelled) setDebugBuild(debug);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const stationReady = state !== null;
+  const stationLive = state?.live ?? false;
+  const stationHub = state?.setup?.hubUrl ?? null;
+  useEffect(() => {
+    if (!stationReady || stationLive || debugBuild) {
+      setUpdateOffer(null);
+      return;
+    }
+    let cancelled = false;
+    void findStationUpdate({
+      live: false,
+      currentVersion: APP_VERSION,
+      hubUrl: stationHub,
+      online: navigator.onLine !== false,
+    }).then((offer) => {
+      if (!cancelled) setUpdateOffer(offer);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [stationReady, stationLive, stationHub, debugBuild]);
 
   useEffect(() => {
     if (!state?.live || !state.setup) return;
@@ -340,6 +378,55 @@ export function App() {
       {error ? <p className="banner bad">{error}</p> : null}
       {offsetWarn ? <p className="banner warn">{offsetWarn}</p> : null}
       {notice ? <p className="banner ok">{notice}</p> : null}
+      {debugBuild && !state.live ? (
+        <p className="banner warn">
+          This is a debug test build. It cannot update itself, and a signed release cannot
+          install over it. Uninstall this app, then install the signed APK.
+        </p>
+      ) : null}
+      {updateOffer && !state.live ? (
+        <section className="update-banner">
+          <strong>Version {updateOffer.version} is available</strong>
+          <p>
+            Download it, then tap Install. Android asks you to confirm. Nothing installs
+            by itself. Android also checks the signature, so a debug test build cannot
+            update another copy.
+          </p>
+          <button
+            type="button"
+            className="wide"
+            disabled={updateBusy}
+            onClick={() => {
+              void (async () => {
+                setUpdateBusy(true);
+                try {
+                  const bytes = await downloadStationApk(
+                    updateOffer,
+                    state.setup?.hubUrl ?? null,
+                  );
+                  if (!bytes) {
+                    setNotice(
+                      "That download did not match the release, so it was not installed.",
+                    );
+                    return;
+                  }
+                  await launchStationInstaller(bytes);
+                } catch (caught) {
+                  setNotice(
+                    caught instanceof Error
+                      ? caught.message
+                      : "The update did not download.",
+                  );
+                } finally {
+                  setUpdateBusy(false);
+                }
+              })();
+            }}
+          >
+            {updateBusy ? "Downloading…" : "Download update"}
+          </button>
+        </section>
+      ) : null}
 
       {!state.setup ? (
         <section className="stack">

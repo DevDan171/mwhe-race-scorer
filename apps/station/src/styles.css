@@ -91,6 +91,19 @@ h1 {
   color: #fff;
 }
 
+.update-banner {
+  background: #111;
+  color: #ffe14a;
+  padding: 12px;
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.update-banner p {
+  margin: 0;
+}
+
 .stack {
   display: grid;
   gap: 10px;

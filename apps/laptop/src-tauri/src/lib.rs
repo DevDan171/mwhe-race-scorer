@@ -11,6 +11,7 @@ use sign_in::{
 use sync_cmd::{
     sync_add_punch, sync_create_pairing, sync_import_punches, sync_roster_qr, sync_seed,
     sync_set_clock_warn_ms, sync_set_manual_start, sync_set_roster, sync_set_row_clock,
+    sync_set_station_apk,
     sync_show_pairing, sync_snapshot, sync_void_punch,
     SyncApp,
 };
@@ -45,7 +46,8 @@ pub fn run() {
             sync_add_punch,
             sync_void_punch,
             sync_set_manual_start,
-            sync_set_row_clock
+            sync_set_row_clock,
+            sync_set_station_apk
         ])
         .run(tauri::generate_context!())
         .expect("error while running MWHE laptop");

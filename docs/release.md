@@ -17,7 +17,8 @@ It installs, builds the laptop and station Vite bundles, builds the Windows NSIS
 - `mwhe-station-web-<tag>.tar.gz`
 - `NATIVE_BUILDS.txt`
 - `mwhe-station-<version>.apk`, or `mwhe-station-<version>-debug.apk` when the Android keystore secrets are not set
-- `latest.json` and a `.sig` file, only when the updater private key is set and `plugins.updater.pubkey` is the matching public key. `latest.json` points at the Windows installer only. The APK is not an updater payload.
+- `latest.json` and a `.sig` file, only when the updater private key is set and `plugins.updater.pubkey` is the matching public key. `latest.json` points at the Windows installer only.
+- `station-update.json` next to a signed `mwhe-station-<version>.apk`. It carries `version`, `url`, and `sha256`. A debug APK does not publish it. Phones use it to update. The Windows updater does not.
 
 `apps/laptop/src-tauri` wires the window, `tauri-plugin-sql`, `tauri-plugin-http`, the updater, and credential commands backed by the `keyring` crate with the `windows-native` feature. Rust 1.90 is required. The Windows workflow installs it. Ubuntu CI does not compile the shell.
 
