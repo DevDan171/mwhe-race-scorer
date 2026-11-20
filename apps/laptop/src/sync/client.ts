@@ -1,4 +1,10 @@
-import type { Punch, RosterDeltaMessage, StationPairing } from "@mwhe/core";
+import type {
+  Punch,
+  RosterDeltaMessage,
+  RowStart,
+  StartTime,
+  StationPairing,
+} from "@mwhe/core";
 
 import { isTauri } from "../platform";
 import { createSyncHost, type SeedInput, type SyncHost, type SyncView } from "./host";
@@ -17,6 +23,8 @@ export interface SyncClient {
   importPunchText(text: string): Promise<SyncView>;
   rosterQr(eventId: string, since: number): Promise<string[]>;
   setClockWarnMs(ms: number): Promise<SyncView>;
+  setManualStart(start: StartTime): Promise<SyncView>;
+  setRowClock(start: RowStart): Promise<SyncView>;
   addPaperPunch(punch: Punch): Promise<SyncView>;
   voidPunch(uuid: string): Promise<SyncView>;
 }
@@ -31,6 +39,8 @@ export function wrapHost(host: SyncHost): SyncClient {
     importPunchText: async (text) => host.importPunchText(text),
     rosterQr: async (eventId, since) => host.rosterQr(eventId, since),
     setClockWarnMs: async (ms) => host.setClockWarnMs(ms),
+    setManualStart: async (start) => host.setManualStart(start),
+    setRowClock: async (start) => host.setRowClock(start),
     addPaperPunch: async (punch) => host.addPaperPunch(punch),
     voidPunch: async (uuid) => host.voidPunch(uuid),
   };
@@ -47,6 +57,8 @@ export function createHttpSyncClient(): SyncClient {
     importPunchText: (text) => post("/__mwhe/import", { text }),
     rosterQr: (eventId, since) => post("/__mwhe/roster-qr", { eventId, since }),
     setClockWarnMs: (ms) => post("/__mwhe/settings", { clockOffsetWarnMs: ms }),
+    setManualStart: (start) => post("/__mwhe/manual-start", { start }),
+    setRowClock: (start) => post("/__mwhe/row-clock", { start }),
     addPaperPunch: (punch) => post("/__mwhe/paper", { punch }),
     voidPunch: (uuid) => post("/__mwhe/void", { uuid }),
   };
@@ -64,6 +76,8 @@ export async function createTauriSyncClient(): Promise<SyncClient> {
     importPunchText: (text) => invoke("sync_import_punches", { text }),
     rosterQr: (eventId, since) => invoke("sync_roster_qr", { eventId, since }),
     setClockWarnMs: (ms) => invoke("sync_set_clock_warn_ms", { clockOffsetWarnMs: ms }),
+    setManualStart: (start) => invoke("sync_set_manual_start", { start }),
+    setRowClock: (start) => invoke("sync_set_row_clock", { start }),
     addPaperPunch: (punch) => invoke("sync_add_punch", { punch }),
     voidPunch: (uuid) => invoke("sync_void_punch", { uuid }),
   };

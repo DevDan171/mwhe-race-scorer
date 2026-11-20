@@ -59,6 +59,19 @@ The laptop strips the contact fields before it writes the race file and stores t
 
 `schemaVersion` stays `1`. The new punch fields are optional, so a punch written before them still parses.
 
+### Row start and rider start
+
+A start phone does not write punches. It writes two optional lists, carried on `push_punches` and on a `qr_start_export` frame:
+
+| Field           | Meaning                                                                                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rowStarts[]`   | One "Row N go". `uuid`, `row`, `timestamp` (phone clock), `createdAt`, `voided`, `deviceId`. Optional `eventId`, `raceId`, `clockOffsetMs`, and `source` (`station` or `laptop`). |
+| `riderStarts[]` | One individual start. Same clock fields, plus `riderNumber` and optional `unknownNumber`.                                                                                         |
+
+A voided copy of the same `uuid` wins. A missing list means there were no starts. A pairing code may include optional `role` (`start`, `check`, or `finish`) and `startRows` (`order`, `label`, `classes` only). A code with no role is a check. A hand-edited rider start is still a `start_time` (`riderNumber`, `startedAt`).
+
+A check result may include optional `lap` and `unscoredReason` (`too_soon`, `out_of_order`, `after_lap_count`). Older results omit both.
+
 ## StartTime
 
 One start per rider, edited on the laptop: `riderNumber`, `startedAt`. If scoring sees more than one, the last one wins and a warning is returned. When the laptop has not entered one, scoring uses the rider's row clock. A row clock exists only when the race has a planned start.
@@ -132,7 +145,7 @@ DNF and DNS are the same status. See [scoring rules](scoring-rules.md).
 
 ### `push_punches`
 
-Station to laptop. `deviceId`, `eventId`, `sentAt`, and the full punches. Optional fields the phone also sends: `raceId`, `checkId`, `appVersion`, `batteryPercent`, `rosterVersion`, and `deviceNow` (a fresh clock sample). The laptop answers with `sync_result`: how many punches were new, how many were duplicates, how many voids were applied, the roster deltas the phone still needs, and whether that phone may go live.
+Station to laptop. `deviceId`, `eventId`, `sentAt`, and the full punches. Optional fields the phone also sends: `raceId`, `checkId`, `appVersion`, `batteryPercent`, `rosterVersion`, `deviceNow` (a fresh clock sample), `rowStarts`, and `riderStarts`. The laptop answers with `sync_result`: how many punches were new, how many were duplicates, how many voids were applied, the roster deltas the phone still needs, and whether that phone may go live.
 
 ### `station_pairing`
 

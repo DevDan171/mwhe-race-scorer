@@ -1,4 +1,11 @@
-import type { Punch, StationPairing } from "@mwhe/core";
+import type {
+  Punch,
+  RowStart,
+  StartRowBrief,
+  StartTime,
+  StationPairing,
+  StationRole,
+} from "@mwhe/core";
 import {
   createContext,
   useContext,
@@ -28,11 +35,15 @@ interface SyncApi {
     raceName: string;
     checkId: string;
     checkName: string;
+    role?: StationRole;
+    startRows?: StartRowBrief[];
   }) => Promise<StationPairing>;
   showPairing: (pairingId: string, hubUrl?: string) => Promise<StationPairing>;
   importPunchText: (text: string) => Promise<void>;
   rosterQr: (eventId: string, since: number) => Promise<string[]>;
   setClockWarnMs: (ms: number) => Promise<void>;
+  setManualStart: (start: StartTime) => Promise<void>;
+  setRowClock: (start: RowStart) => Promise<void>;
   addPaperPunch: (punch: Punch) => Promise<void>;
   voidPunch: (uuid: string) => Promise<void>;
 }
@@ -155,6 +166,12 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     },
     async setClockWarnMs(ms) {
       await commit((client) => client.setClockWarnMs(ms));
+    },
+    async setManualStart(start) {
+      await commit((client) => client.setManualStart(start));
+    },
+    async setRowClock(start) {
+      await commit((client) => client.setRowClock(start));
     },
     async addPaperPunch(punch) {
       await commit((client) => client.addPaperPunch(punch));

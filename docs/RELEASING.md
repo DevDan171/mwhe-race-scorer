@@ -84,7 +84,7 @@ The same version tag attaches the phone APK next to the Windows installer. The f
 
 Pull requests upload the same APK as the artifact `mwhe-station-android`.
 
-The laptop package and the station package are both `0.3.0` in this tree. Bump them together before you tag. A phone whose version does not match the laptop is refused at go-live.
+The laptop package and the station package are both `0.4.0` in this tree. Bump them together before you tag. A phone whose version does not match the laptop is refused at go-live.
 
 Create the keystore once, on your own PC. It never goes in git. `.gitignore` already ignores `*.jks` and `*.keystore`.
 

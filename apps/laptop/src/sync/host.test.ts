@@ -22,7 +22,7 @@ describe("app versions", () => {
     expect(laptop.version).toBe(APP_VERSION);
     expect(station.version).toBe(APP_VERSION);
     expect(tauri.version).toBe(APP_VERSION);
-    expect(APP_VERSION).toBe("0.3.0");
+    expect(APP_VERSION).toBe("0.4.0");
   });
 });
 

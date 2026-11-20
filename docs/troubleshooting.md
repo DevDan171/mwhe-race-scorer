@@ -2,7 +2,7 @@
 
 ## The phone will not go live
 
-The phone version and the laptop version have to match, for example both `0.3.0`. The Stations screen shows **Version mismatch** and the phone explains the two versions. Install the APK from the same GitHub release as the laptop. Punches already on the phone can still be synced or carried back as QR codes. They are not deleted.
+The phone version and the laptop version have to match, for example both `0.4.0`. The Stations screen shows **Version mismatch** and the phone explains the two versions. Install the APK from the same GitHub release as the laptop. Punches already on the phone can still be synced or carried back as QR codes. They are not deleted.
 
 ## The laptop says a phone clock needs review
 

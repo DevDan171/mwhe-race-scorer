@@ -4,9 +4,14 @@ import {
   primaryRace,
   projectPhoneRoster,
   punchSchema,
+  DEFAULT_MIN_PASS_GAP_MS,
+  raceEndWarning,
+  rowStartSchema,
   scoreRace,
   SCHEMA_VERSION,
+  startTimeSchema,
   type Punch,
+  type ResultRow,
 } from "@mwhe/core";
 import { useMemo, useState } from "react";
 
@@ -23,6 +28,10 @@ export function Scoring() {
   const [number, setNumber] = useState("");
   const [checkId, setCheckId] = useState("");
   const [when, setWhen] = useState(() => toLocalInput(new Date()));
+  const [startNumber, setStartNumber] = useState("");
+  const [startWhen, setStartWhen] = useState(() => toLocalInput(new Date()));
+  const [rowNumber, setRowNumber] = useState("");
+  const [rowWhen, setRowWhen] = useState(() => toLocalInput(new Date()));
 
   const state = hub.state;
   const punches = useMemo(() => {
@@ -38,14 +47,17 @@ export function Scoring() {
       schemaVersion: SCHEMA_VERSION,
       race: state.race,
       punches,
-      startTimes: [],
+      startTimes: sync.view?.manualStarts ?? [],
+      rowStarts: sync.view?.rowStarts ?? [],
+      riderStarts: sync.view?.riderStarts ?? [],
+      minPassGapMs: sync.view?.settings.minPassGapMs ?? DEFAULT_MIN_PASS_GAP_MS,
       penalties: [],
       disqualifications: [],
       resultsVersion: 1,
       resultsStatus: "provisional",
       publishedAt: state.downloadedAt,
     });
-  }, [state, punches]);
+  }, [state, punches, sync.view]);
 
   if (!state || !scored) {
     return (
@@ -119,6 +131,73 @@ export function Scoring() {
     }
   }
 
+  async function saveHandStart() {
+    const riderNumber = Number(startNumber);
+    const startedAt = fromLocalInput(startWhen);
+    const previous = (sync.view?.manualStarts ?? []).find(
+      (entry) => entry.riderNumber === riderNumber,
+    );
+    const start = startTimeSchema.parse({
+      schemaVersion: SCHEMA_VERSION,
+      riderNumber,
+      startedAt,
+    });
+    await sync.setManualStart(start);
+    await hub.change("Rider start edited", (current, audit) => ({
+      ...current,
+      changelog: [
+        ...current.changelog,
+        createChangelogEntry({
+          id: audit.entryId,
+          who: audit.who,
+          when: audit.when,
+          why: audit.why,
+          entity: { type: "start_time", id: String(riderNumber) },
+          action: previous ? "change" : "add",
+          before: previous ? { startedAt: previous.startedAt } : null,
+          after: { riderNumber, startedAt },
+        }),
+      ],
+    }));
+  }
+
+  async function saveRowClock() {
+    const row = Number(rowNumber);
+    const timestamp = fromLocalInput(rowWhen);
+    const previous = (sync.view?.rowStarts ?? []).find(
+      (entry) => entry.row === row && entry.source === "laptop" && !entry.voided,
+    );
+    const start = rowStartSchema.parse({
+      schemaVersion: SCHEMA_VERSION,
+      uuid: crypto.randomUUID(),
+      eventId: state!.race.event.id,
+      raceId: race.id,
+      row,
+      timestamp,
+      createdAt: new Date().toISOString(),
+      voided: false,
+      deviceId: "laptop",
+      source: "laptop",
+    });
+    await sync.setRowClock(start);
+    await hub.change("Row start edited", (current, audit) => ({
+      ...current,
+      changelog: [
+        ...current.changelog,
+        createChangelogEntry({
+          id: audit.entryId,
+          who: audit.who,
+          when: audit.when,
+          why: audit.why,
+          entity: { type: "race", id: race.id },
+          action: previous ? "change" : "add",
+          before: previous ? { row, timestamp: previous.timestamp } : null,
+          after: { row, timestamp },
+        }),
+      ],
+    }));
+  }
+
   return (
     <div className="stack">
       <header className="page-head">
@@ -131,6 +210,9 @@ export function Scoring() {
         </div>
       </header>
       {error ? <Banner tone="error">{error}</Banner> : null}
+      {raceEndWarning(race.length) ? (
+        <Banner tone="error">{raceEndWarning(race.length)}</Banner>
+      ) : null}
       {scored.warnings.length > 0 ? (
         <Banner tone="info">
           {scored.warnings.length} scoring notes. Unknown numbers stay in the list.
@@ -147,6 +229,7 @@ export function Scoring() {
               <th>CLASS</th>
               <th>CHECKS</th>
               <th>TIME</th>
+              <th>LAPS</th>
               <th>STATUS</th>
             </tr>
           </thead>
@@ -159,12 +242,86 @@ export function Scoring() {
                 <td>{row.class ?? "—"}</td>
                 <td>{row.checks}</td>
                 <td>{formatSeconds(row.totalTimeSeconds)}</td>
+                <td>{lapSummary(row)}</td>
                 <td>{row.unknown ? "Unknown number" : row.status}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      <section className="card" style={{ padding: 16 }}>
+        <h2>Starts</h2>
+        <p className="lede">
+          A hand-edited start beats an individual start, which beats a row go, which beats
+          the planned row clock. Edits are logged with your name.
+        </p>
+        <ul>
+          {(sync.view?.rowStarts ?? [])
+            .filter((entry) => !entry.voided)
+            .map((entry) => (
+              <li key={entry.uuid}>
+                Row {entry.row} at {formatWhen(entry.timestamp)}
+                {entry.source === "laptop" ? " (hand edit)" : ""}
+              </li>
+            ))}
+          {(sync.view?.riderStarts ?? [])
+            .filter((entry) => !entry.voided)
+            .map((entry) => (
+              <li key={entry.uuid}>
+                #{entry.riderNumber} individual start {formatWhen(entry.timestamp)}
+              </li>
+            ))}
+        </ul>
+        <div className="row">
+          <Field label="Rider number">
+            <input
+              value={startNumber}
+              onChange={(event) => setStartNumber(event.target.value)}
+              inputMode="numeric"
+            />
+          </Field>
+          <Field label="Hand-edited start">
+            <input
+              type="datetime-local"
+              value={startWhen}
+              onChange={(event) => setStartWhen(event.target.value)}
+            />
+          </Field>
+          <button
+            type="button"
+            className="btn"
+            onClick={() =>
+              void saveHandStart().catch((caught) => setError(messageOf(caught)))
+            }
+          >
+            Save rider start
+          </button>
+          <Field label="Row">
+            <input
+              value={rowNumber}
+              onChange={(event) => setRowNumber(event.target.value)}
+              inputMode="numeric"
+            />
+          </Field>
+          <Field label="Row go">
+            <input
+              type="datetime-local"
+              value={rowWhen}
+              onChange={(event) => setRowWhen(event.target.value)}
+            />
+          </Field>
+          <button
+            type="button"
+            className="btn"
+            onClick={() =>
+              void saveRowClock().catch((caught) => setError(messageOf(caught)))
+            }
+          >
+            Save row start
+          </button>
+        </div>
+      </section>
 
       <section className="card" style={{ padding: 16 }}>
         <h2>Paper backup</h2>
@@ -289,6 +446,21 @@ function checkName(
     if (check) return check.name;
   }
   return checkId;
+}
+
+function lapSummary(row: ResultRow): string {
+  const laps = new Map<number, string[]>();
+  for (const check of row.checkResults) {
+    if (check.lap === undefined) continue;
+    const list = laps.get(check.lap) ?? [];
+    const mark = check.countsForScore ? formatSeconds(check.cumulativeSeconds) : "review";
+    list.push(`${check.checkId} ${mark}`);
+    laps.set(check.lap, list);
+  }
+  if (laps.size === 0) return "—";
+  return [...laps.entries()]
+    .map(([lap, parts]) => `Lap ${lap}: ${parts.join(", ")}`)
+    .join(" · ");
 }
 
 function formatSeconds(seconds: number | null): string {

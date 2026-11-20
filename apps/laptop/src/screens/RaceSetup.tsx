@@ -4,11 +4,13 @@ import {
   assignRiderToRow,
   clearRiderRow,
   removeStartRow,
+  raceEndWarning,
   rowPlannedStart,
   setPlannedStart,
   setRaceLength,
   setRowGapSeconds,
   unassignedInRace,
+  type RaceLength,
   type RiderClass,
 } from "@mwhe/core";
 import { useState, type DragEvent } from "react";
@@ -133,14 +135,17 @@ export function RaceSetup() {
         Row N starts at row 1 + {race.rowGapSeconds} s × (N−1). Minutes count from each
         row’s own start.
       </p>
+      {raceEndWarning(race.length) ? (
+        <Banner tone="error">{raceEndWarning(race.length)}</Banner>
+      ) : null}
       <LengthEditor
         raceId={race.id}
-        onSave={(minutes) =>
+        onSave={(length) =>
           void run(() =>
             hub.change("Race length updated", (current, audit) =>
               setRaceLength(current, {
                 raceId: race.id,
-                length: { mode: "time", minutes },
+                length,
                 audit,
               }),
             ),
@@ -402,31 +407,49 @@ function LengthEditor({
   onStart,
 }: {
   raceId: string;
-  onSave: (minutes: number) => void;
+  onSave: (length: RaceLength) => void;
   onGap: (seconds: number) => void;
   onStart: (value: string | null) => void;
 }) {
-  const [minutes, setMinutes] = useState("");
+  const [mode, setMode] = useState<"time" | "laps">("laps");
+  const [amount, setAmount] = useState("");
   const [gap, setGap] = useState("");
   const [start, setStart] = useState("");
   return (
     <details className="card" style={{ padding: 12 }}>
-      <summary>Edit length, row gap, or row 1 start</summary>
+      <summary>Edit end mode, row gap, or row 1 start</summary>
       <div className="inline" style={{ marginTop: 10 }}>
         <label className="field">
-          Minutes
+          End mode
+          <select
+            value={mode}
+            onChange={(event) => setMode(event.target.value === "time" ? "time" : "laps")}
+          >
+            <option value="laps">Lap count</option>
+            <option value="time">Time limit</option>
+          </select>
+        </label>
+        <label className="field">
+          {mode === "laps" ? "Laps" : "Minutes"}
           <input
-            value={minutes}
+            value={amount}
             inputMode="numeric"
-            onChange={(event) => setMinutes(event.target.value)}
+            onChange={(event) => setAmount(event.target.value)}
           />
         </label>
         <button
           type="button"
           className="btn small"
-          onClick={() => onSave(Number(minutes))}
+          onClick={() => {
+            const value = Number(amount);
+            onSave(
+              mode === "laps"
+                ? { mode: "laps", laps: value }
+                : { mode: "time", minutes: value },
+            );
+          }}
         >
-          Save length
+          Save end mode
         </button>
         <label className="field">
           Row gap seconds

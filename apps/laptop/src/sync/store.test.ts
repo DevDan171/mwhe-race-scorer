@@ -9,7 +9,7 @@ describe("sync sqlite", () => {
     const store = createSyncStore(db);
     await store.save({
       schemaVersion: 1,
-      settings: { clockOffsetWarnMs: 2_000 },
+      settings: { clockOffsetWarnMs: 2_000, minPassGapMs: 120_000 },
       stations: [
         {
           pairingId: "00000000-0000-4000-8000-0000000000a1",
@@ -29,6 +29,8 @@ describe("sync sqlite", () => {
           pairedAt: "2026-06-14T14:00:00.000Z",
           goLiveAllowed: true,
           rosterVersion: 1,
+          role: "check",
+          startRows: [],
         },
       ],
       punches: [
@@ -43,6 +45,9 @@ describe("sync sqlite", () => {
           voided: false,
         },
       ],
+      rowStarts: [],
+      riderStarts: [],
+      manualStarts: [],
     });
     const reopened = createSyncStore(
       await createSqlJsExecutor({ bytes: db.exportBytes() }),

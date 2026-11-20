@@ -17,10 +17,20 @@ The phone app is MWHE Station. The laptop app is MWHE Race Scorer. They have to 
 1. Turn on the travel router. Join the laptop and the phones to its Wi-Fi. Do not join a phone hotspot.
 2. On the laptop, import the event if it is not already there. Register day-of riders before you send people to the checks. A phone only learns about a new rider at its next sync, or from a roster code.
 3. Open **Stations**. The laptop listens for phones on port 8788. The screen lists the addresses, such as `http://192.168.4.20:8788`. If more than one address is listed, pick the one that belongs to the travel router before you show a code.
-4. For each check, choose the race and the check, then **Show pairing code**. Hand the phone to that check. On the phone, **Scan laptop code**. The phone locks to that check. One code is one phone. A second phone at the same check needs its own code.
+4. For each phone, choose the race and the station: Start, a check, or Finish. Finish uses the last check on the course. Then **Show pairing code**. Hand the phone to that station. On the phone, **Scan laptop code**. The phone locks to that station. One code is one phone. A second phone needs its own code.
 5. The phone shows how far its clock is from the laptop. If it says the clock is off by 2 seconds or more, fix the phone's time before **Go live**. Two seconds is the default warning. You can change it on the Stations screen. The punch is still saved either way. The laptop flags it for review.
 6. **Go live** on the phone. The screen stays on. Android shows a notification, "MWHE Station is recording", so it is less likely to close the app. Leave that notification alone.
 7. If the phone says the versions do not match, do not go live. Install the APK that matches the laptop.
+
+## Start station and finish station
+
+A phone is locked to one job when you pair it: **Start**, a **Check**, or **Finish**. It stays that job, the same way a check phone stays on its check.
+
+**Start.** The laptop sends the race's start rows, in order, with the row label and the classes on that row. No rider names. The phone shows a big **Row N go** button for each row. One tap records that row's departure from the phone's clock. That time replaces the planned row clock for every rider in the row. If the same row is tapped again, the phone asks before it saves another time. **Late starter** is the keypad: type a number and press **Start**. That rider's own start overrides their row. Undo voids the last start. It is saved on the phone before the screen clears, and it syncs like a punch, including the QR codes when the phone is out of range.
+
+**Finish.** The finish is the last checkpoint on the course. The phone is the same keypad as a check, with **Finish** on the button. On a lap race a rider can pass the finish once per lap. Every pass is saved. The laptop decides which ones count.
+
+**Checks and the finish on a lap race.** A rider can be punched at the same check on each lap. The phone still asks before a second punch inside the double-tap window (60 seconds unless you change it). The laptop also flags a repeat of the same check that is closer than 2 minutes, so it can be reviewed. It does not throw the time away.
 
 ## At the check
 

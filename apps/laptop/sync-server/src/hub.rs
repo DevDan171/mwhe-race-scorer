@@ -28,6 +28,70 @@ pub struct Station {
     pub paired_at: String,
     pub go_live_allowed: bool,
     pub roster_version: i64,
+    #[serde(default = "role_check")]
+    pub role: String,
+    #[serde(default)]
+    pub start_rows: Vec<StartRowBrief>,
+}
+
+fn role_check() -> String {
+    "check".into()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartRowBrief {
+    pub order: i64,
+    pub label: String,
+    pub classes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RowStart {
+    pub schema_version: u8,
+    pub uuid: String,
+    pub row: i64,
+    pub timestamp: String,
+    pub created_at: String,
+    pub voided: bool,
+    pub device_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub race_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock_offset_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RiderStart {
+    pub schema_version: u8,
+    pub uuid: String,
+    pub rider_number: i64,
+    pub timestamp: String,
+    pub created_at: String,
+    pub voided: bool,
+    pub device_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub race_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock_offset_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unknown_number: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManualStart {
+    pub schema_version: u8,
+    pub rider_number: i64,
+    pub started_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,8 +139,12 @@ struct RosterDelta {
 #[derive(Debug, Clone)]
 pub struct Hub {
     pub settings_warn_ms: i64,
+    pub settings_gap_ms: i64,
     pub stations: Vec<Station>,
     pub punches: Vec<Punch>,
+    pub row_starts: Vec<RowStart>,
+    pub rider_starts: Vec<RiderStart>,
+    pub manual_starts: Vec<ManualStart>,
     roster: Vec<RosterDelta>,
     pub hub_version: String,
 }
@@ -87,6 +155,9 @@ pub struct Snapshot {
     pub settings: WarnSetting,
     pub stations: Vec<Station>,
     pub punches: Vec<Punch>,
+    pub row_starts: Vec<RowStart>,
+    pub rider_starts: Vec<RiderStart>,
+    pub manual_starts: Vec<ManualStart>,
     pub listening_urls: Vec<String>,
     pub hub_version: String,
 }
@@ -95,6 +166,7 @@ pub struct Snapshot {
 #[serde(rename_all = "camelCase")]
 pub struct WarnSetting {
     pub clock_offset_warn_ms: i64,
+    pub min_pass_gap_ms: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -107,6 +179,10 @@ pub struct PairingInput {
     pub race_name: String,
     pub check_id: String,
     pub check_name: String,
+    #[serde(default = "role_check")]
+    pub role: String,
+    #[serde(default)]
+    pub start_rows: Vec<StartRowBrief>,
 }
 
 #[derive(Debug, Serialize)]
@@ -126,6 +202,8 @@ pub struct PairingPayload {
     pub laptop_now: String,
     pub hub_version: String,
     pub clock_offset_warn_ms: i64,
+    pub role: String,
+    pub start_rows: Vec<StartRowBrief>,
 }
 
 pub struct HttpReply {
@@ -137,20 +215,28 @@ impl Hub {
     pub fn new(version: &str) -> Self {
         Self {
             settings_warn_ms: 2_000,
+            settings_gap_ms: 120_000,
             stations: Vec::new(),
             punches: Vec::new(),
+            row_starts: Vec::new(),
+            rider_starts: Vec::new(),
+            manual_starts: Vec::new(),
             roster: Vec::new(),
             hub_version: version.to_string(),
-            }
+        }
     }
 
     pub fn snapshot(&self, urls: &[String]) -> Snapshot {
         Snapshot {
             settings: WarnSetting {
                 clock_offset_warn_ms: self.settings_warn_ms,
+                min_pass_gap_ms: self.settings_gap_ms,
             },
             stations: self.stations.clone(),
             punches: self.punches.clone(),
+            row_starts: self.row_starts.clone(),
+            rider_starts: self.rider_starts.clone(),
+            manual_starts: self.manual_starts.clone(),
             listening_urls: urls.to_vec(),
             hub_version: self.hub_version.clone(),
         }
@@ -162,11 +248,17 @@ impl Hub {
             None => Stored {
                 settings: WarnSetting {
                     clock_offset_warn_ms: self.settings_warn_ms,
+                    min_pass_gap_ms: self.settings_gap_ms,
                 },
                 stations: Vec::new(),
                 punches: Vec::new(),
+                row_starts: Vec::new(),
+                rider_starts: Vec::new(),
+                manual_starts: Vec::new(),
             },
         };
+        let row_starts = merge_row_starts(incoming.row_starts.clone(), &self.row_starts);
+        let rider_starts = merge_rider_starts(incoming.rider_starts.clone(), &self.rider_starts);
         let roster = parse_deltas(deltas)?;
         let mut punches = merge_punches(incoming.punches, &self.punches);
         punches = merge_punches(punches, &[]);
@@ -190,8 +282,12 @@ impl Hub {
         }
         self.hub_version = version.to_string();
         self.settings_warn_ms = incoming.settings.clock_offset_warn_ms;
+        self.settings_gap_ms = incoming.settings.min_pass_gap_ms;
         self.roster = roster;
         self.punches = punches;
+        self.row_starts = row_starts;
+        self.rider_starts = rider_starts;
+        self.manual_starts = incoming.manual_starts;
         self.stations = stations.into_values().collect();
         Ok(())
     }
@@ -230,6 +326,8 @@ impl Hub {
             paired_at: now.to_string(),
             go_live_allowed: false,
             roster_version: 0,
+            role: input.role.clone(),
+            start_rows: input.start_rows.clone(),
         });
         Ok(payload)
     }
@@ -262,6 +360,8 @@ impl Hub {
             laptop_now: now.to_string(),
             hub_version: self.hub_version.clone(),
             clock_offset_warn_ms: self.settings_warn_ms,
+            role: station.role.clone(),
+            start_rows: station.start_rows.clone(),
         })
     }
 
@@ -283,9 +383,53 @@ impl Hub {
     }
 
     pub fn import_text(&mut self, text: &str) -> Result<(), String> {
+        if text.contains("qr_start_export") {
+            return self.import_starts(text);
+        }
         let frames = parse_frames(text)?;
         let punches = assemble_frames(&frames)?;
         self.punches = merge_punches(self.punches.clone(), &punches);
+        Ok(())
+    }
+
+    fn import_starts(&mut self, text: &str) -> Result<(), String> {
+        let value: Value = serde_json::from_str(text).map_err(|_| "That text is not a station QR payload.".to_string())?;
+        let frames = match value {
+            Value::Array(items) => items,
+            other => vec![other],
+        };
+        for frame in frames {
+            let kind = frame.get("type").and_then(Value::as_str).unwrap_or("");
+            if kind != "qr_start_export" {
+                return Err("That text is not a start export.".into());
+            }
+            let items = frame.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
+            for item in items {
+                let kind = item.get("kind").and_then(Value::as_str).unwrap_or("");
+                if kind == "row" {
+                    let start: RowStart = serde_json::from_value(item.get("start").cloned().unwrap_or(Value::Null))
+                        .map_err(|_| "A row start in this QR was not understood.".to_string())?;
+                    self.row_starts = merge_row_starts(self.row_starts.clone(), &[start]);
+                } else if kind == "rider" {
+                    let start: RiderStart = serde_json::from_value(item.get("start").cloned().unwrap_or(Value::Null))
+                        .map_err(|_| "A rider start in this QR was not understood.".to_string())?;
+                    self.rider_starts = merge_rider_starts(self.rider_starts.clone(), &[start]);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn set_manual_start(&mut self, start: Value) -> Result<(), String> {
+        let parsed: ManualStart = serde_json::from_value(start).map_err(|_| "That start was not understood.".to_string())?;
+        self.manual_starts.retain(|entry| entry.rider_number != parsed.rider_number);
+        self.manual_starts.push(parsed);
+        Ok(())
+    }
+
+    pub fn set_row_clock(&mut self, start: Value) -> Result<(), String> {
+        let parsed: RowStart = serde_json::from_value(start).map_err(|_| "That row start was not understood.".to_string())?;
+        self.row_starts = merge_row_starts(self.row_starts.clone(), &[parsed]);
         Ok(())
     }
 
@@ -408,6 +552,8 @@ impl Hub {
         }
         let (punches, accepted, duplicates, voids_applied) = merge_counts(&self.punches, &message.punches);
         self.punches = punches;
+        self.row_starts = merge_row_starts(self.row_starts.clone(), &message.row_starts);
+        self.rider_starts = merge_rider_starts(self.rider_starts.clone(), &message.rider_starts);
         let app_version = message.app_version.clone().or_else(|| self.stations[index].app_version.clone());
         let allowed = app_version
             .as_ref()
@@ -532,6 +678,10 @@ struct Push {
     roster_version: Option<i64>,
     #[serde(default)]
     device_now: Option<String>,
+    #[serde(default)]
+    row_starts: Vec<RowStart>,
+    #[serde(default)]
+    rider_starts: Vec<RiderStart>,
 }
 
 #[derive(Deserialize)]
@@ -540,6 +690,12 @@ struct Stored {
     settings: WarnSetting,
     stations: Vec<Station>,
     punches: Vec<Punch>,
+    #[serde(default)]
+    row_starts: Vec<RowStart>,
+    #[serde(default)]
+    rider_starts: Vec<RiderStart>,
+    #[serde(default)]
+    manual_starts: Vec<ManualStart>,
 }
 
 impl<'de> Deserialize<'de> for WarnSetting {
@@ -548,10 +704,16 @@ impl<'de> Deserialize<'de> for WarnSetting {
         #[serde(rename_all = "camelCase")]
         struct Raw {
             clock_offset_warn_ms: i64,
+            #[serde(default = "default_gap")]
+            min_pass_gap_ms: i64,
+        }
+        fn default_gap() -> i64 {
+            120_000
         }
         let raw = Raw::deserialize(deserializer)?;
         Ok(WarnSetting {
             clock_offset_warn_ms: raw.clock_offset_warn_ms,
+            min_pass_gap_ms: raw.min_pass_gap_ms,
         })
     }
 }
@@ -630,7 +792,37 @@ fn pairing_payload(hub: &Hub, input: &PairingInput, secret: &str, now: &str, hub
         laptop_now: now.to_string(),
         hub_version: hub.hub_version.clone(),
         clock_offset_warn_ms: hub.settings_warn_ms,
+        role: input.role.clone(),
+        start_rows: input.start_rows.clone(),
     }
+}
+
+fn merge_row_starts(existing: Vec<RowStart>, incoming: &[RowStart]) -> Vec<RowStart> {
+    let mut starts = existing;
+    for start in incoming {
+        if let Some(found) = starts.iter_mut().find(|entry| entry.uuid == start.uuid) {
+            if start.voided {
+                found.voided = true;
+            }
+        } else {
+            starts.push(start.clone());
+        }
+    }
+    starts
+}
+
+fn merge_rider_starts(existing: Vec<RiderStart>, incoming: &[RiderStart]) -> Vec<RiderStart> {
+    let mut starts = existing;
+    for start in incoming {
+        if let Some(found) = starts.iter_mut().find(|entry| entry.uuid == start.uuid) {
+            if start.voided {
+                found.voided = true;
+            }
+        } else {
+            starts.push(start.clone());
+        }
+    }
+    starts
 }
 
 fn new_secret() -> String {
@@ -928,6 +1120,8 @@ mod tests {
             paired_at: "2026-06-14T15:00:00.000Z".into(),
             go_live_allowed: false,
             roster_version: 0,
+            role: "check".into(),
+            start_rows: Vec::new(),
         }
     }
 

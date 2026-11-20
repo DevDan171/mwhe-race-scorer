@@ -12,4 +12,6 @@ commands.allow = [
   "sync_set_clock_warn_ms",
   "sync_add_punch",
   "sync_void_punch",
+  "sync_set_manual_start",
+  "sync_set_row_clock",
 ]

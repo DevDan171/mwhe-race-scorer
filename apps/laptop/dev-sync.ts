@@ -137,6 +137,18 @@ function dispatch(
   if (path === "/__mwhe/settings") {
     return { status: 200, body: host.setClockWarnMs(Number(body.clockOffsetWarnMs)) };
   }
+  if (path === "/__mwhe/manual-start") {
+    return {
+      status: 200,
+      body: host.setManualStart(body.start as Parameters<SyncHost["setManualStart"]>[0]),
+    };
+  }
+  if (path === "/__mwhe/row-clock") {
+    return {
+      status: 200,
+      body: host.setRowClock(body.start as Parameters<SyncHost["setRowClock"]>[0]),
+    };
+  }
   if (path === "/__mwhe/paper") {
     return {
       status: 200,

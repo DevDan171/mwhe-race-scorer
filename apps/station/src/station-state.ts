@@ -4,21 +4,28 @@ import {
   clockOffsetMs,
   DEFAULT_CLOCK_OFFSET_WARN_MS,
   DEFAULT_DOUBLE_TAP_WINDOW_MS,
+  DEFAULT_MIN_PASS_GAP_MS,
   encodeCheckpointQr,
+  encodeStartQr,
   findDoubleTap,
   isUnknownRiderNumber,
   phoneRosterSchema,
   punchSchema,
   QR_CHUNK_MAX_CHARS,
   readRosterFrames,
+  riderStartSchema,
+  rowStartSchema,
   stationPairingSchema,
   versionsMatch,
   type PhoneRoster,
   type Punch,
   type QrRosterExport,
+  type RiderStart,
   type RosterDeltaMessage,
+  type RowStart,
   type StationHelloAck,
   type StationPairing,
+  type StationRole,
   type SyncResult,
 } from "@mwhe/core";
 import { z } from "zod";
@@ -43,6 +50,16 @@ export const stationSetupSchema = z.strictObject({
   offsetConfirmed: z.boolean(),
   goLiveAllowed: z.boolean(),
   pairedAt: z.string().min(1),
+  role: z.enum(["start", "check", "finish"]).default("check"),
+  startRows: z
+    .array(
+      z.strictObject({
+        order: z.number().int().positive(),
+        label: z.string().min(1),
+        classes: z.array(z.string().min(1)).min(1),
+      }),
+    )
+    .default([]),
 });
 
 export type StationSetup = z.infer<typeof stationSetupSchema>;
@@ -53,8 +70,11 @@ export const stationStateSchema = z.strictObject({
   setup: stationSetupSchema.nullable(),
   roster: phoneRosterSchema.nullable(),
   punches: z.array(punchSchema),
+  rowStarts: z.array(rowStartSchema).default([]),
+  riderStarts: z.array(riderStartSchema).default([]),
   settings: z.strictObject({
     doubleTapWindowMs: z.number().int().nonnegative(),
+    minPassGapMs: z.number().int().nonnegative().default(DEFAULT_MIN_PASS_GAP_MS),
   }),
   live: z.boolean(),
   lastSyncAt: z.string().nullable(),
@@ -69,7 +89,12 @@ export function freshStation(deviceId: string): StationState {
     setup: null,
     roster: null,
     punches: [],
-    settings: { doubleTapWindowMs: DEFAULT_DOUBLE_TAP_WINDOW_MS },
+    rowStarts: [],
+    riderStarts: [],
+    settings: {
+      doubleTapWindowMs: DEFAULT_DOUBLE_TAP_WINDOW_MS,
+      minPassGapMs: DEFAULT_MIN_PASS_GAP_MS,
+    },
     live: false,
     lastSyncAt: null,
   });
@@ -109,8 +134,13 @@ export function lockSetup(
   deviceNow: string,
   stationVersion: string,
 ): StationState {
-  if (state.setup && state.punches.length > 0) {
-    throw new Error("This phone is already locked to a check.");
+  if (
+    state.setup &&
+    (state.punches.length > 0 ||
+      state.rowStarts.length > 0 ||
+      state.riderStarts.length > 0)
+  ) {
+    throw new Error("This phone is already locked to a station.");
   }
   const pairing = stationPairingSchema.parse(payload);
   const allowed = versionsMatch(stationVersion, pairing.hubVersion);
@@ -132,6 +162,8 @@ export function lockSetup(
       offsetConfirmed: false,
       goLiveAllowed: allowed,
       pairedAt: deviceNow,
+      role: pairing.role ?? "check",
+      startRows: pairing.startRows ?? [],
     },
   });
 }
@@ -153,8 +185,12 @@ export function endLive(state: StationState): StationState {
 }
 
 export function clearSetup(state: StationState): StationState {
-  if (state.punches.length > 0) {
-    throw new Error("Punches are already saved. This phone stays on this check.");
+  if (
+    state.punches.length > 0 ||
+    state.rowStarts.length > 0 ||
+    state.riderStarts.length > 0
+  ) {
+    throw new Error("Times are already saved. This phone stays on this station.");
   }
   return { ...state, setup: null, roster: null, live: false };
 }
@@ -165,7 +201,7 @@ export function setDoubleTapWindow(state: StationState, windowMs: number): Stati
   }
   return {
     ...state,
-    settings: { doubleTapWindowMs: windowMs },
+    settings: { ...state.settings, doubleTapWindowMs: windowMs },
   };
 }
 
@@ -217,6 +253,126 @@ export function decidePunch(
     unknown,
     state: { ...state, punches: [...state.punches, punch] },
   };
+}
+
+export type StartDecision =
+  | { ok: true; state: StationState; label: string }
+  | { ok: false; reason: "not_live" | "bad_number" | "unknown_row" }
+  | { ok: false; reason: "already"; previousAt: string; label: string };
+
+export function recordRowGo(
+  state: StationState,
+  rowOrder: number,
+  now: string,
+  confirm: boolean,
+): StartDecision {
+  if (!state.live || !state.setup || state.setup.role !== "start") {
+    return { ok: false, reason: "not_live" };
+  }
+  const row = state.setup.startRows.find((entry) => entry.order === rowOrder);
+  if (!row) return { ok: false, reason: "unknown_row" };
+  const previous = [...state.rowStarts]
+    .reverse()
+    .find((entry) => entry.row === rowOrder && !entry.voided);
+  if (previous && !confirm) {
+    return {
+      ok: false,
+      reason: "already",
+      previousAt: previous.timestamp,
+      label: row.label,
+    };
+  }
+  const start = rowStartSchema.parse({
+    schemaVersion: 1,
+    uuid: crypto.randomUUID(),
+    eventId: state.setup.eventId,
+    raceId: state.setup.raceId,
+    row: rowOrder,
+    timestamp: now,
+    createdAt: now,
+    voided: false,
+    deviceId: state.deviceId,
+    clockOffsetMs: state.setup.clockOffsetMs,
+    source: "station",
+  });
+  return {
+    ok: true,
+    label: row.label,
+    state: { ...state, rowStarts: [...state.rowStarts, start] },
+  };
+}
+
+export function recordRiderStart(
+  state: StationState,
+  riderNumberText: string,
+  now: string,
+  confirm: boolean,
+): StartDecision & { unknown?: boolean } {
+  if (!state.live || !state.setup || state.setup.role !== "start") {
+    return { ok: false, reason: "not_live" };
+  }
+  const riderNumber = parseRiderNumber(riderNumberText);
+  if (riderNumber === null) return { ok: false, reason: "bad_number" };
+  const previous = [...state.riderStarts]
+    .reverse()
+    .find((entry) => entry.riderNumber === riderNumber && !entry.voided);
+  if (
+    previous &&
+    !confirm &&
+    Date.parse(now) - Date.parse(previous.timestamp) < state.settings.minPassGapMs
+  ) {
+    return {
+      ok: false,
+      reason: "already",
+      previousAt: previous.timestamp,
+      label: `#${riderNumber}`,
+    };
+  }
+  const rosterReady = state.roster !== null && state.roster.version > 0;
+  const numbers = state.roster?.riders.map((rider) => rider.number) ?? [];
+  const unknown = rosterReady && isUnknownRiderNumber(numbers, riderNumber);
+  const start = riderStartSchema.parse({
+    schemaVersion: 1,
+    uuid: crypto.randomUUID(),
+    eventId: state.setup.eventId,
+    raceId: state.setup.raceId,
+    riderNumber,
+    timestamp: now,
+    createdAt: now,
+    voided: false,
+    deviceId: state.deviceId,
+    clockOffsetMs: state.setup.clockOffsetMs,
+    ...(unknown ? { unknownNumber: true } : {}),
+  });
+  return {
+    ok: true,
+    unknown,
+    label: `#${riderNumber}`,
+    state: { ...state, riderStarts: [...state.riderStarts, start] },
+  };
+}
+
+export function voidLatestStart(
+  state: StationState,
+): { state: StationState; label: string } | null {
+  if (!state.setup) return null;
+  const row = [...state.rowStarts].reverse().find((entry) => !entry.voided);
+  const rider = [...state.riderStarts].reverse().find((entry) => !entry.voided);
+  const rowMs = row ? Date.parse(row.createdAt) : -1;
+  const riderMs = rider ? Date.parse(rider.createdAt) : -1;
+  if (row && rowMs >= riderMs) {
+    const rowStarts = state.rowStarts.map((entry) =>
+      entry.uuid === row.uuid ? { ...entry, voided: true } : entry,
+    );
+    return { state: { ...state, rowStarts }, label: `Row ${row.row}` };
+  }
+  if (rider) {
+    const riderStarts = state.riderStarts.map((entry) =>
+      entry.uuid === rider.uuid ? { ...entry, voided: true } : entry,
+    );
+    return { state: { ...state, riderStarts }, label: `#${rider.riderNumber}` };
+  }
+  return null;
 }
 
 export function voidLatestPunch(
@@ -305,6 +461,23 @@ export function exportPunchQr(
   });
 }
 
+export function exportStartQr(
+  state: StationState,
+  exportedAt: string,
+  maxChars = QR_CHUNK_MAX_CHARS,
+): string[] {
+  if (!state.setup) throw new Error("Scan the laptop code before exporting starts.");
+  return encodeStartQr({
+    eventId: state.setup.eventId,
+    raceId: state.setup.raceId,
+    deviceId: state.deviceId,
+    exportedAt,
+    rowStarts: state.rowStarts,
+    riderStarts: state.riderStarts,
+    maxChars,
+  });
+}
+
 export function importRosterQr(
   state: StationState,
   frames: readonly QrRosterExport[],
@@ -338,5 +511,11 @@ function tryParse(json: string | null): StationState | null {
 export function emptyRosterVersion(state: StationState): number {
   return state.roster?.version ?? 0;
 }
+
+export function stationRole(state: StationState): StationRole {
+  return state.setup?.role ?? "check";
+}
+
+export type { RiderStart, RowStart };
 
 export { readRosterFrames, DEFAULT_CLOCK_OFFSET_WARN_MS };

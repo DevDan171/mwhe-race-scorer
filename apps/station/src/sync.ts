@@ -71,6 +71,8 @@ export async function syncWithHub(
         batteryPercent: input.batteryPercent,
         rosterVersion: emptyRosterVersion(next),
         punches: next.punches,
+        ...(next.rowStarts.length > 0 ? { rowStarts: next.rowStarts } : {}),
+        ...(next.riderStarts.length > 0 ? { riderStarts: next.riderStarts } : {}),
       },
     );
     if (!pushed.ok) return { ok: false, state: next, message: pushed.message };

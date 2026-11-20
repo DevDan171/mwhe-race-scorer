@@ -4,7 +4,7 @@ Tags are semantic versions: `vMAJOR.MINOR.PATCH`, with an optional prerelease (`
 
 `schemaVersion` in `@mwhe/core` is not the git tag. Bump `schemaVersion` when a stored document changes in a breaking way. Until 1.0, a breaking schema change should also bump the minor tag. After 1.0 it should bump the major tag.
 
-The laptop and the station packages are `0.3.0` together. A phone is not allowed to go live unless that version matches the laptop it pairs with. The release version is still the git tag. The Windows workflow writes the tag into the installer at build time. The Android workflow writes the tag into the APK the same way. Do not tag until both packages are the version you mean to ship.
+The laptop and the station packages are `0.4.0` together. A phone is not allowed to go live unless that version matches the laptop it pairs with. The release version is still the git tag. The Windows workflow writes the tag into the installer at build time. The Android workflow writes the tag into the APK the same way. Do not tag until both packages are the version you mean to ship.
 
 How to install the exe, and how to set updater keys or Azure signing, is in [install-windows.md](install-windows.md) and [RELEASING.md](RELEASING.md).
 

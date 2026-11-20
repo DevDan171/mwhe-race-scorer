@@ -1,7 +1,10 @@
 import {
   addPunches,
   assembleCheckpointFrames,
+  assembleStartFrames,
   createPairing,
+  dedupeRiderStarts,
+  dedupeRowStarts,
   emptySyncHub,
   encodeRosterQr,
   handleSyncRequest,
@@ -11,12 +14,20 @@ import {
   pairingFromStation,
   punchSchema,
   readCheckpointFrames,
+  readStartFrames,
+  setManualStart,
   setRoster,
+  setRowClock,
   storedFromHub,
   updateClockWarnMs,
   voidPunch,
+  voidRiderStart,
+  voidRowStart,
   type Punch,
+  type RiderStart,
   type RosterDeltaMessage,
+  type RowStart,
+  type StartTime,
   type StationPairing,
   type StationRecord,
   type StoredSyncState,
@@ -29,6 +40,9 @@ export interface SyncView {
   settings: SyncSettings;
   stations: StationRecord[];
   punches: Punch[];
+  rowStarts: RowStart[];
+  riderStarts: RiderStart[];
+  manualStarts: StartTime[];
   listeningUrls: string[];
   hubVersion: string;
 }
@@ -53,6 +67,10 @@ export interface SyncHost {
   importPunchText(text: string): SyncView;
   rosterQr(eventId: string, since: number): string[];
   setClockWarnMs(ms: number): SyncView;
+  setManualStart(start: StartTime): SyncView;
+  setRowClock(start: RowStart): SyncView;
+  voidRowStart(uuid: string): SyncView;
+  voidRiderStart(uuid: string): SyncView;
   addPaperPunch(punch: Punch): SyncView;
   voidPunch(uuid: string): SyncView;
   handle(request: Omit<SyncHttpRequest, "laptopNow"> & { laptopNow?: string }): {
@@ -77,6 +95,9 @@ export function createSyncHost(
       settings: hub.settings,
       stations: hub.stations,
       punches: hub.punches,
+      rowStarts: hub.rowStarts,
+      riderStarts: hub.riderStarts,
+      manualStarts: hub.manualStarts,
       listeningUrls: urls,
       hubVersion: hub.hubVersion,
     };
@@ -107,6 +128,9 @@ export function createSyncHost(
         punches,
         stations: [...stations.values()],
         settings: input.stored?.settings ?? base.settings,
+        rowStarts: dedupeRowStarts([...base.rowStarts, ...hub.rowStarts]),
+        riderStarts: dedupeRiderStarts([...base.riderStarts, ...hub.riderStarts]),
+        manualStarts: base.manualStarts,
       };
       return view();
     },
@@ -142,6 +166,15 @@ export function createSyncHost(
       return { view: view(), payload };
     },
     importPunchText(text) {
+      if (text.includes("qr_start_export")) {
+        const starts = assembleStartFrames(readStartFrames(text));
+        hub = {
+          ...hub,
+          rowStarts: dedupeRowStarts([...hub.rowStarts, ...starts.rowStarts]),
+          riderStarts: dedupeRiderStarts([...hub.riderStarts, ...starts.riderStarts]),
+        };
+        return view();
+      }
       const punches = assembleCheckpointFrames(readCheckpointFrames(text));
       hub = addPunches(hub, punches).hub;
       return view();
@@ -154,6 +187,22 @@ export function createSyncHost(
     },
     setClockWarnMs(ms) {
       hub = updateClockWarnMs(hub, ms);
+      return view();
+    },
+    setManualStart(start) {
+      hub = setManualStart(hub, start);
+      return view();
+    },
+    setRowClock(start) {
+      hub = setRowClock(hub, start);
+      return view();
+    },
+    voidRowStart(uuid) {
+      hub = voidRowStart(hub, uuid);
+      return view();
+    },
+    voidRiderStart(uuid) {
+      hub = voidRiderStart(hub, uuid);
       return view();
     },
     addPaperPunch(punch) {
@@ -181,6 +230,9 @@ export function storedOf(view: SyncView): StoredSyncState {
     settings: view.settings,
     stations: view.stations,
     punches: view.punches,
+    rowStarts: view.rowStarts,
+    riderStarts: view.riderStarts,
+    manualStarts: view.manualStarts,
     rosterDeltas: [],
     hubVersion: view.hubVersion,
   });

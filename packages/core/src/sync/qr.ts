@@ -1,14 +1,17 @@
 import type { Punch } from "../schemas/punch.js";
 import { punchSchema } from "../schemas/punch.js";
+import type { RiderStart, RowStart } from "../schemas/starts.js";
 import type {
   QrCheckpointExport,
   QrRosterExport,
+  QrStartExport,
   RosterDeltaMessage,
 } from "../schemas/sync.js";
 import {
   importQrCheckpointExport,
   qrCheckpointExportSchema,
   qrRosterExportSchema,
+  qrStartExportSchema,
   rosterDeltaMessageSchema,
 } from "../schemas/sync.js";
 import { SCHEMA_VERSION } from "../version.js";
@@ -50,6 +53,65 @@ export interface RosterQrInput {
   exportedAt: string;
   deltas: readonly RosterDeltaMessage[];
   maxChars?: number;
+}
+
+export interface StartQrInput {
+  eventId: string;
+  raceId?: string;
+  deviceId: string;
+  exportedAt: string;
+  rowStarts: readonly RowStart[];
+  riderStarts: readonly RiderStart[];
+  maxChars?: number;
+}
+
+export function encodeStartQr(input: StartQrInput): string[] {
+  const maxChars = input.maxChars ?? QR_CHUNK_MAX_CHARS;
+  const items = [
+    ...input.rowStarts.map((start) => ({ kind: "row" as const, start })),
+    ...input.riderStarts.map((start) => ({ kind: "rider" as const, start })),
+  ];
+  const frames = pack(items, maxChars, (slice, part, parts) =>
+    qrStartExportSchema.parse({
+      schemaVersion: SCHEMA_VERSION,
+      type: "qr_start_export",
+      eventId: input.eventId,
+      ...(input.raceId ? { raceId: input.raceId } : {}),
+      deviceId: input.deviceId,
+      exportedAt: input.exportedAt,
+      part,
+      parts,
+      items: slice,
+    }),
+  );
+  return frames.map((frame) => JSON.stringify(frame));
+}
+
+export function readStartFrames(text: string): QrStartExport[] {
+  const values = parseQrPayload(text);
+  if (values.length === 0) throw new Error("Paste a start QR payload first.");
+  return values.map((value) => qrStartExportSchema.parse(value));
+}
+
+export function assembleStartFrames(frames: readonly QrStartExport[]): {
+  rowStarts: RowStart[];
+  riderStarts: RiderStart[];
+} {
+  const parsed = frames.map((frame) => qrStartExportSchema.parse(frame));
+  const ordered = requireComplete(parsed, startKey);
+  const rowStarts: RowStart[] = [];
+  const riderStarts: RiderStart[] = [];
+  for (const frame of ordered) {
+    for (const item of frame.items) {
+      if (item.kind === "row") rowStarts.push(item.start);
+      else riderStarts.push(item.start);
+    }
+  }
+  return { rowStarts, riderStarts };
+}
+
+function startKey(frame: QrStartExport): string {
+  return `${frame.eventId}:${frame.deviceId}:${frame.exportedAt}`;
 }
 
 export function encodeRosterQr(input: RosterQrInput): string[] {

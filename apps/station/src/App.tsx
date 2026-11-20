@@ -10,21 +10,27 @@ import { setStationAwake } from "./keep-awake";
 import { QrCamera } from "./qr-camera";
 import { QrImage } from "./qr-image";
 import { Keypad } from "./screens/Keypad";
+import { StartBoard } from "./screens/Start";
 import { openStationStorage, type KvStorage } from "./storage";
 import {
   clearSetup,
   decidePunch,
   endLive,
   exportPunchQr,
+  exportStartQr,
   goLive,
   goLiveBlock,
   importRosterQr,
   loadStation,
   lockSetup,
   persistStation,
+  recordRiderStart,
+  recordRowGo,
   riderLabel,
   setDoubleTapWindow,
+  stationRole,
   voidLatestPunch,
+  voidLatestStart,
   type StationState,
 } from "./station-state";
 import { syncWithHub } from "./sync";
@@ -97,7 +103,8 @@ export function App() {
       } else if (event.key === "Backspace") {
         setDigits((current) => current.slice(0, -1));
       } else if (event.key === "Enter") {
-        void punch(false);
+        if (stateRef.current.setup?.role === "start") void startRider(false);
+        else void punch(false);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -164,6 +171,83 @@ export function App() {
     }
   }
 
+  async function startRow(order: number, confirm: boolean) {
+    if (busy) return;
+    let saved = false;
+    let warned = false;
+    setBusy(true);
+    try {
+      await commit((current) => {
+        const decision = recordRowGo(current, order, new Date().toISOString(), confirm);
+        if (!decision.ok) {
+          warned = decision.reason === "already";
+          return current;
+        }
+        saved = true;
+        setNotice(`${decision.label} go saved.`);
+        setFlash(`${decision.label}\nGo`);
+        window.setTimeout(() => setFlash(null), 600);
+        return decision.state;
+      });
+      if (saved) {
+        setDoubleTap(null);
+        setError(null);
+      } else if (warned) {
+        setDoubleTap(`row:${order}`);
+      } else {
+        setError("That row is not on this start station.");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The row start did not save.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startRider(confirm: boolean) {
+    if (busy) return;
+    const entered = digitsRef.current;
+    let saved = false;
+    let warned = false;
+    setBusy(true);
+    try {
+      await commit((current) => {
+        const decision = recordRiderStart(
+          current,
+          entered,
+          new Date().toISOString(),
+          confirm,
+        );
+        if (!decision.ok) {
+          warned = decision.reason === "already";
+          return current;
+        }
+        saved = true;
+        setNotice(
+          decision.unknown
+            ? `${decision.label} is not on the roster. Start saved anyway.`
+            : `${decision.label} start saved.`,
+        );
+        setFlash(`${decision.label}\nStart`);
+        window.setTimeout(() => setFlash(null), 600);
+        return decision.state;
+      });
+      if (saved) {
+        setDigits("");
+        setDoubleTap(null);
+        setError(null);
+      } else if (warned) {
+        setDoubleTap(entered);
+      } else {
+        setError("Enter the rider number, then start.");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The start did not save.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function applyPairing(text: string) {
     const parsed = stationPairingSchema.safeParse(JSON.parse(text));
     if (!parsed.success) throw new Error("That is not a station code from the laptop.");
@@ -172,7 +256,13 @@ export function App() {
     );
     setCamera(null);
     setPaste("");
-    setNotice("This phone is locked to that check.");
+    setNotice(
+      parsed.data.role === "start"
+        ? "This phone is locked as the start station."
+        : parsed.data.role === "finish"
+          ? "This phone is locked as the finish."
+          : "This phone is locked to that check.",
+    );
   }
 
   async function applyRoster(text: string) {
@@ -235,7 +325,9 @@ export function App() {
     : null;
   const frames =
     state.setup && panel === "sync"
-      ? exportPunchQr(state, state.lastSyncAt ?? new Date().toISOString())
+      ? state.setup.role === "start"
+        ? exportStartQr(state, state.lastSyncAt ?? new Date().toISOString())
+        : exportPunchQr(state, state.lastSyncAt ?? new Date().toISOString())
       : [];
   const frame = frames[Math.min(qrIndex, Math.max(frames.length - 1, 0))] ?? null;
 
@@ -314,7 +406,11 @@ export function App() {
               void commit((current) => goLive(current, APP_VERSION))
                 .then(() =>
                   setNotice(
-                    "This check is live. Punches save on this phone immediately.",
+                    state.setup?.role === "start"
+                      ? "The start is live. Times save on this phone immediately."
+                      : state.setup?.role === "finish"
+                        ? "The finish is live. Times save on this phone immediately."
+                        : "This check is live. Punches save on this phone immediately.",
                   ),
                 )
                 .catch((caught) =>
@@ -346,7 +442,9 @@ export function App() {
               );
             }}
           />
-          {state.punches.length === 0 ? (
+          {state.punches.length === 0 &&
+          state.rowStarts.length === 0 &&
+          state.riderStarts.length === 0 ? (
             <button
               type="button"
               className="wide alt"
@@ -363,7 +461,12 @@ export function App() {
               Start over
             </button>
           ) : (
-            <p>{state.punches.length} punches are already on this phone.</p>
+            <p>
+              {state.setup.role === "start"
+                ? state.rowStarts.length + state.riderStarts.length
+                : state.punches.length}{" "}
+              times are already on this phone.
+            </p>
           )}
         </section>
       ) : null}
@@ -371,16 +474,34 @@ export function App() {
       {state.setup && state.live ? (
         <>
           <p className="muted">
-            {activePunchCount(state)} punches · roster v{state.roster?.version ?? 0}
+            {stationRole(state) === "start"
+              ? state.rowStarts.filter((entry) => !entry.voided).length +
+                state.riderStarts.filter((entry) => !entry.voided).length
+              : activePunchCount(state)}{" "}
+            {stationRole(state) === "start" ? "starts" : "punches"} · roster v
+            {state.roster?.version ?? 0}
             {state.lastSyncAt ? "" : " · not synced yet"}
           </p>
-          {panel === "punch" ? (
+          {panel === "punch" && stationRole(state) === "start" ? (
+            <StartBoard
+              state={state}
+              digits={digits}
+              disabled={busy}
+              onDigits={setDigits}
+              onRow={(order) => void startRow(order, false)}
+              onRider={() => void startRider(false)}
+              onUndo={() => setUndoOpen(true)}
+            />
+          ) : null}
+          {panel === "punch" && stationRole(state) !== "start" ? (
             <section className="stack">
+              {stationRole(state) === "finish" ? <h1>Finish</h1> : null}
               <Keypad
                 value={digits}
                 disabled={busy}
                 onChange={setDigits}
                 onPunch={() => void punch(false)}
+                actionLabel={stationRole(state) === "finish" ? "Finish" : "Punch"}
               />
               <button
                 type="button"
@@ -543,7 +664,16 @@ export function App() {
           <div className="card" role="alertdialog" aria-label="Possible double punch">
             <h2>Number {doubleTap} was just punched</h2>
             <p>Save another punch for the same number?</p>
-            <button type="button" className="wide" onClick={() => void punch(true)}>
+            <button
+              type="button"
+              className="wide"
+              onClick={() => {
+                if (doubleTap?.startsWith("row:"))
+                  void startRow(Number(doubleTap.slice(4)), true);
+                else if (state.setup?.role === "start") void startRider(true);
+                else void punch(true);
+              }}
+            >
               Save another
             </button>
             <button type="button" className="wide alt" onClick={() => setDoubleTap(null)}>
@@ -555,13 +685,21 @@ export function App() {
       {undoOpen ? (
         <div className="dialog">
           <div className="card" role="alertdialog" aria-label="Undo punch">
-            <h2>Undo the last punch?</h2>
+            <h2>
+              {state.setup?.role === "start"
+                ? "Undo the last start?"
+                : "Undo the last punch?"}
+            </h2>
             <p>It stays in the file as voided, and the laptop will not score it.</p>
             <button
               type="button"
               className="wide"
               onClick={() => {
-                void commit((current) => voidLatestPunch(current)?.state ?? current)
+                void commit((current) =>
+                  current.setup?.role === "start"
+                    ? (voidLatestStart(current)?.state ?? current)
+                    : (voidLatestPunch(current)?.state ?? current),
+                )
                   .then(() => {
                     setUndoOpen(false);
                     setNotice("Last punch voided.");

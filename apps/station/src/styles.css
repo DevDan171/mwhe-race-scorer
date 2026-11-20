@@ -109,6 +109,11 @@ h1 {
   border-radius: 12px;
 }
 
+.row-go {
+  min-height: 96px;
+  font-size: 2rem;
+}
+
 .wide.alt,
 .key.ghost,
 .tab {
