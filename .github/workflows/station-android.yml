@@ -122,6 +122,8 @@ jobs:
               exit 1
             fi
             cp "$signed" "$GITHUB_WORKSPACE/release-apk/mwhe-station-${VERSION}.apk"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose \
+              "$GITHUB_WORKSPACE/release-apk/mwhe-station-${VERSION}.apk"
           else
             ./gradlew assembleDebug --no-daemon -PstationVersion="$VERSION"
             cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/release-apk/mwhe-station-${VERSION}-debug.apk"
