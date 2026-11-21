@@ -6,8 +6,8 @@ def versionCodeFromName = (versionParts[0] as int) * 10000 + (versionParts[1] as
 def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
 def keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
 def keyAliasName = System.getenv("ANDROID_KEY_ALIAS")
-def keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-def releaseSigning = keystorePath && keystorePassword && keyAliasName && keyPassword
+def keystoreKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+def releaseSigning = keystorePath && keystorePassword && keyAliasName && keystoreKeyPassword
 
 android {
     namespace = "com.midwesthardenduro.station"
@@ -28,10 +28,12 @@ android {
     signingConfigs {
         release {
             if (releaseSigning) {
-                storeFile file(keystorePath)
-                storePassword keystorePassword
-                keyAlias keyAliasName
-                keyPassword keyPassword
+                // Assignment, not method calls. A local named keyPassword would
+                // otherwise be invoked as the method and the build would not sign.
+                storeFile = file(keystorePath)
+                storePassword = keystorePassword
+                keyAlias = keyAliasName
+                keyPassword = keystoreKeyPassword
             }
         }
     }
