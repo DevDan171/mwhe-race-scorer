@@ -3,6 +3,16 @@ import { z } from "zod";
 import { isoTimestampSchema, schemaVersionSchema } from "../schemas/common.js";
 import type { Punch } from "../schemas/punch.js";
 import { punchSchema } from "../schemas/punch.js";
+import { startTimeSchema, type StartTime } from "../schemas/start-time.js";
+import {
+  riderStartSchema,
+  rowStartSchema,
+  startRowBriefSchema,
+  stationRoleSchema,
+  type RowStart,
+  type StartRowBrief,
+  type StationRole,
+} from "../schemas/starts.js";
 import type {
   PushPunchesMessage,
   RosterDeltaMessage,
@@ -20,7 +30,8 @@ import {
   syncResultSchema,
 } from "../schemas/sync.js";
 import { SCHEMA_VERSION } from "../version.js";
-import { DEFAULT_CLOCK_OFFSET_WARN_MS } from "./defaults.js";
+import { DEFAULT_CLOCK_OFFSET_WARN_MS, DEFAULT_MIN_PASS_GAP_MS } from "./defaults.js";
+import { dedupeRiderStarts, dedupeRowStarts } from "../scoring/start-capture.js";
 import { clockOffsetMs, mergePunches, versionsMatch } from "./punches.js";
 
 export const stationRecordSchema = z.strictObject({
@@ -41,12 +52,15 @@ export const stationRecordSchema = z.strictObject({
   pairedAt: isoTimestampSchema,
   goLiveAllowed: z.boolean(),
   rosterVersion: z.number().int().nonnegative(),
+  role: stationRoleSchema.default("check"),
+  startRows: z.array(startRowBriefSchema).default([]),
 });
 
 export type StationRecord = z.infer<typeof stationRecordSchema>;
 
 export const syncSettingsSchema = z.strictObject({
   clockOffsetWarnMs: z.number().int().nonnegative(),
+  minPassGapMs: z.number().int().nonnegative().default(DEFAULT_MIN_PASS_GAP_MS),
 });
 
 export type SyncSettings = z.infer<typeof syncSettingsSchema>;
@@ -56,6 +70,9 @@ export const syncHubSchema = z.strictObject({
   settings: syncSettingsSchema,
   stations: z.array(stationRecordSchema),
   punches: z.array(punchSchema),
+  rowStarts: z.array(rowStartSchema).default([]),
+  riderStarts: z.array(riderStartSchema).default([]),
+  manualStarts: z.array(startTimeSchema).default([]),
   rosterDeltas: z.array(rosterDeltaMessageSchema),
   hubVersion: z.string().min(1),
 });
@@ -68,6 +85,9 @@ export const storedSyncStateSchema = z.strictObject({
   settings: syncSettingsSchema,
   stations: z.array(stationRecordSchema),
   punches: z.array(punchSchema),
+  rowStarts: z.array(rowStartSchema).default([]),
+  riderStarts: z.array(riderStartSchema).default([]),
+  manualStarts: z.array(startTimeSchema).default([]),
 });
 
 export type StoredSyncState = z.infer<typeof storedSyncStateSchema>;
@@ -112,6 +132,9 @@ export function storedFromHub(hub: SyncHub): StoredSyncState {
     settings: hub.settings,
     stations: hub.stations,
     punches: hub.punches,
+    rowStarts: hub.rowStarts,
+    riderStarts: hub.riderStarts,
+    manualStarts: hub.manualStarts,
   });
 }
 
@@ -155,7 +178,7 @@ export function updateClockWarnMs(hub: SyncHub, clockOffsetWarnMs: number): Sync
       "The clock warning must be a whole number of milliseconds, zero or more.",
     );
   }
-  return { ...hub, settings: { clockOffsetWarnMs } };
+  return { ...hub, settings: { ...hub.settings, clockOffsetWarnMs } };
 }
 
 export interface PairingInput {
@@ -166,6 +189,8 @@ export interface PairingInput {
   raceName: string;
   checkId: string;
   checkName: string;
+  role?: StationRole;
+  startRows?: StartRowBrief[];
   now: string;
   secret: string;
   pairingId: string;
@@ -192,6 +217,8 @@ export function createPairing(
     laptopNow: input.now,
     hubVersion: hub.hubVersion,
     clockOffsetWarnMs: hub.settings.clockOffsetWarnMs,
+    role: input.role ?? "check",
+    startRows: input.startRows ?? [],
   });
   const station = stationRecordSchema.parse({
     pairingId: input.pairingId,
@@ -211,6 +238,8 @@ export function createPairing(
     pairedAt: input.now,
     goLiveAllowed: false,
     rosterVersion: 0,
+    role: payload.role ?? "check",
+    startRows: payload.startRows ?? [],
   });
   return { hub: { ...hub, stations: [...hub.stations, station] }, payload };
 }
@@ -237,6 +266,8 @@ export function pairingFromStation(
     laptopNow: now,
     hubVersion: hub.hubVersion,
     clockOffsetWarnMs: hub.settings.clockOffsetWarnMs,
+    role: station.role,
+    startRows: station.startRows,
   });
 }
 
@@ -246,6 +277,38 @@ export function addPunches(
 ): { hub: SyncHub; merge: ReturnType<typeof mergePunches> } {
   const merge = mergePunches(hub.punches, incoming);
   return { hub: { ...hub, punches: merge.punches }, merge };
+}
+
+export function setManualStart(hub: SyncHub, start: StartTime): SyncHub {
+  const parsed = startTimeSchema.parse(start);
+  const manualStarts = [
+    ...hub.manualStarts.filter((entry) => entry.riderNumber !== parsed.riderNumber),
+    parsed,
+  ];
+  return { ...hub, manualStarts };
+}
+
+export function setRowClock(hub: SyncHub, rowStart: RowStart): SyncHub {
+  const parsed = rowStartSchema.parse(rowStart);
+  return { ...hub, rowStarts: dedupeRowStarts([...hub.rowStarts, parsed]) };
+}
+
+export function voidRowStart(hub: SyncHub, uuid: string): SyncHub {
+  return {
+    ...hub,
+    rowStarts: hub.rowStarts.map((entry) =>
+      entry.uuid === uuid ? { ...entry, voided: true } : entry,
+    ),
+  };
+}
+
+export function voidRiderStart(hub: SyncHub, uuid: string): SyncHub {
+  return {
+    ...hub,
+    riderStarts: hub.riderStarts.map((entry) =>
+      entry.uuid === uuid ? { ...entry, voided: true } : entry,
+    ),
+  };
 }
 
 export function voidPunch(hub: SyncHub, uuid: string): SyncHub {
@@ -367,6 +430,14 @@ export function applyPunchPush(
   if (identityError) return badRequest(hub, identityError);
 
   const merged = mergePunches(hub.punches, message.punches);
+  const rowStarts = dedupeRowStarts([
+    ...(hub.rowStarts ?? []),
+    ...(message.rowStarts ?? []),
+  ]);
+  const riderStarts = dedupeRiderStarts([
+    ...(hub.riderStarts ?? []),
+    ...(message.riderStarts ?? []),
+  ]);
   const appVersion = message.appVersion ?? station.appVersion;
   const allowed = appVersion
     ? versionsMatch(hub.hubVersion, appVersion)
@@ -401,7 +472,10 @@ export function applyPunchPush(
     clockOffsetWarnMs: hub.settings.clockOffsetWarnMs,
   });
   return {
-    hub: replaceStation({ ...hub, punches: merged.punches }, next),
+    hub: replaceStation(
+      { ...hub, punches: merged.punches, rowStarts, riderStarts },
+      next,
+    ),
     status: 200,
     body: result,
   };

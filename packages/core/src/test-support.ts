@@ -1,9 +1,11 @@
 import { RIDER_CLASSES, type RiderClass } from "./classes.js";
 import type { Penalty } from "./schemas/penalty.js";
 import type { Punch } from "./schemas/punch.js";
+import type { RiderStart, RowStart } from "./schemas/starts.js";
 import { defaultRace, type RaceLength, type StartRow } from "./schemas/race-package.js";
 import type { StartTime } from "./schemas/start-time.js";
 import type { ScoreRaceInput } from "./scoring/types.js";
+import { DEFAULT_MIN_PASS_GAP_MS } from "./sync/defaults.js";
 import { SCHEMA_VERSION } from "./version.js";
 
 export const EPOCH = "2026-06-14T14:00:00.000Z";
@@ -103,6 +105,9 @@ export function makeScoreInput(
     checks?: Array<{ id: string; order: number; name: string }>;
     punches?: Punch[];
     startTimes?: StartTime[];
+    rowStarts?: RowStart[];
+    riderStarts?: RiderStart[];
+    minPassGapMs?: number;
     penalties?: Penalty[];
     disqualifications?: ScoreRaceInput["disqualifications"];
   } = {},
@@ -162,6 +167,9 @@ export function makeScoreInput(
     },
     punches: args.punches ?? [],
     startTimes: args.startTimes ?? [],
+    rowStarts: args.rowStarts ?? [],
+    riderStarts: args.riderStarts ?? [],
+    minPassGapMs: args.minPassGapMs ?? DEFAULT_MIN_PASS_GAP_MS,
     penalties: args.penalties ?? [],
     disqualifications: args.disqualifications ?? [],
   };

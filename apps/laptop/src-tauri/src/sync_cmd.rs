@@ -64,7 +64,7 @@ async fn ensure(state: &SyncApp) -> Result<RunningHandle, String> {
             });
         }
     }
-    let hub = share(Hub::new("0.3.0"));
+    let hub = share(Hub::new("0.4.0"));
     listen(hub.clone(), SYNC_PORT)
         .await
         .map_err(|err| format!("Could not listen for phones on port {SYNC_PORT}: {err}"))?;
@@ -171,6 +171,35 @@ pub async fn sync_add_punch(state: State<'_, SyncApp>, punch: Value) -> Result<S
     let mut hub = running.hub.write().await;
     hub.add_punch(punch)?;
     Ok(hub.snapshot(&running.urls))
+}
+
+#[tauri::command]
+pub async fn sync_set_manual_start(state: State<'_, SyncApp>, start: Value) -> Result<Snapshot, String> {
+    let running = running(&state)?;
+    let mut hub = running.hub.write().await;
+    hub.set_manual_start(start)?;
+    Ok(hub.snapshot(&running.urls))
+}
+
+#[tauri::command]
+pub async fn sync_set_row_clock(state: State<'_, SyncApp>, start: Value) -> Result<Snapshot, String> {
+    let running = running(&state)?;
+    let mut hub = running.hub.write().await;
+    hub.set_row_clock(start)?;
+    Ok(hub.snapshot(&running.urls))
+}
+
+#[tauri::command]
+pub async fn sync_set_station_apk(
+    state: State<'_, SyncApp>,
+    manifest: Value,
+    apkBase64: String,
+) -> Result<(), String> {
+    let running = running(&state)?;
+    let apk = mwhe_sync_server::decode_apk_base64(&apkBase64)?;
+    let mut hub = running.hub.write().await;
+    hub.set_station_update(manifest, apk)?;
+    Ok(())
 }
 
 #[tauri::command]

@@ -4,6 +4,12 @@ import { SCHEMA_VERSION } from "../version.js";
 import { isoTimestampSchema, riderNumberSchema, schemaVersionSchema } from "./common.js";
 import { punchSchema, type Punch } from "./punch.js";
 import { phoneRosterRiderSchema } from "./rider.js";
+import {
+  riderStartSchema,
+  rowStartSchema,
+  startRowBriefSchema,
+  stationRoleSchema,
+} from "./starts.js";
 
 /** Station -> laptop. The phone pushes the punches it holds. */
 export const pushPunchesMessageSchema = z.strictObject({
@@ -19,6 +25,8 @@ export const pushPunchesMessageSchema = z.strictObject({
   batteryPercent: z.number().int().min(0).max(100).nullable().optional(),
   rosterVersion: z.number().int().nonnegative().optional(),
   deviceNow: isoTimestampSchema.optional(),
+  rowStarts: z.array(rowStartSchema).optional(),
+  riderStarts: z.array(riderStartSchema).optional(),
 });
 
 /**
@@ -128,6 +136,9 @@ export const stationPairingSchema = z.strictObject({
   laptopNow: isoTimestampSchema,
   hubVersion: z.string().min(1),
   clockOffsetWarnMs: z.number().int().nonnegative(),
+  /** Missing on a code from before station roles. The phone treats that as a check. */
+  role: stationRoleSchema.optional(),
+  startRows: z.array(startRowBriefSchema).optional(),
 });
 
 /** Phone -> laptop, after the QR scan. Bearer token is the pairing secret. */
@@ -209,10 +220,39 @@ export const qrRosterExportSchema = z
     }
   });
 
+export const qrStartItemSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("row"), start: rowStartSchema }),
+  z.strictObject({ kind: z.literal("rider"), start: riderStartSchema }),
+]);
+
+export const qrStartExportSchema = z
+  .strictObject({
+    schemaVersion: schemaVersionSchema,
+    type: z.literal("qr_start_export"),
+    eventId: z.string().min(1),
+    raceId: z.string().min(1).optional(),
+    deviceId: z.string().min(1),
+    exportedAt: isoTimestampSchema,
+    part: z.number().int().positive(),
+    parts: z.number().int().positive(),
+    items: z.array(qrStartItemSchema),
+  })
+  .superRefine((frame, ctx) => {
+    if (frame.part > frame.parts) {
+      ctx.addIssue({
+        code: "custom",
+        message: "QR part cannot be greater than parts",
+        path: ["part"],
+        input: frame,
+      });
+    }
+  });
+
 export const syncMessageSchema = z.discriminatedUnion("type", [
   pushPunchesMessageSchema,
   rosterDeltaMessageSchema,
   qrCheckpointExportSchema,
+  qrStartExportSchema,
   stationPairingSchema,
   stationHelloSchema,
   stationHelloAckSchema,
@@ -226,6 +266,8 @@ export type PushPunchesMessage = z.infer<typeof pushPunchesMessageSchema>;
 export type RosterDeltaMessage = z.infer<typeof rosterDeltaMessageSchema>;
 export type QrPunch = z.infer<typeof qrPunchSchema>;
 export type QrCheckpointExport = z.infer<typeof qrCheckpointExportSchema>;
+export type QrStartExport = z.infer<typeof qrStartExportSchema>;
+export type QrStartItem = z.infer<typeof qrStartItemSchema>;
 export type StationPairing = z.infer<typeof stationPairingSchema>;
 export type StationHello = z.infer<typeof stationHelloSchema>;
 export type StationHelloAck = z.infer<typeof stationHelloAckSchema>;

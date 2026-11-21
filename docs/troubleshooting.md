@@ -2,7 +2,7 @@
 
 ## The phone will not go live
 
-The phone version and the laptop version have to match, for example both `0.3.0`. The Stations screen shows **Version mismatch** and the phone explains the two versions. Install the APK from the same GitHub release as the laptop. Punches already on the phone can still be synced or carried back as QR codes. They are not deleted.
+The phone version and the laptop version have to match, for example both `0.4.0`. The Stations screen shows **Version mismatch** and the phone explains the two versions. Install the APK from the same GitHub release as the laptop. Punches already on the phone can still be synced or carried back as QR codes. They are not deleted.
 
 ## The laptop says a phone clock needs review
 
@@ -38,4 +38,4 @@ The app is built for Android 8 and newer. An older phone will not install it.
 
 ## The Windows installer or updater
 
-The station APK is a separate file on the release. `latest.json` still points at the Windows installer only. A missing Android keystore does not stop the Windows build. It publishes `mwhe-station-<version>-debug.apk` instead of a release-signed APK. Debug APKs install for a test. A race weekend should use the signed APK once the keystore secrets exist. See [RELEASING.md](RELEASING.md).
+The station APK is a separate file on the release. `latest.json` still points at the Windows installer only. A signed release also publishes `station-update.json`. A missing Android keystore does not stop the Windows build. It publishes `mwhe-station-<version>-debug.apk` instead of a release-signed APK, and it does not publish `station-update.json`. Debug APKs install for a test. They cannot update each other, and a signed APK cannot install over one. A phone on the 0.3.0 test build has to be uninstalled once before the signed 0.4.0 APK will install. A race weekend should use the signed APK once the keystore secrets exist. See [RELEASING.md](RELEASING.md).

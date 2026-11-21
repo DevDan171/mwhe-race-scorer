@@ -4,7 +4,7 @@
 mod hub;
 mod http;
 
-pub use hub::{hub_now, lan_urls, Hub, PairingInput, PairingPayload, Snapshot, SYNC_PORT};
+pub use hub::{decode_apk_base64, hub_now, lan_urls, Hub, PairingInput, PairingPayload, Snapshot, SYNC_PORT};
 pub use http::{listen, router};
 
 use std::sync::Arc;

@@ -1,6 +1,6 @@
 {
   "name": "@mwhe/station",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Android checkpoint phone. Punches are saved on the device and synced to the laptop hub.",
   "type": "module",

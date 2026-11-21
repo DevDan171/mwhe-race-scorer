@@ -19,6 +19,13 @@ export const checkResultSchema = z.strictObject({
   countsForScore: z.boolean(),
   /** Check-scoped penalties attached to this check, in seconds. */
   penaltySeconds: z.number().int().nonnegative(),
+  /** Set on a multi-lap race. Omitted when the race scores one pass per check. */
+  lap: z.number().int().positive().optional(),
+  /**
+   * Why a recorded pass did not count. Omitted when it counted, and on
+   * timed and one-lap races that still use one row per check.
+   */
+  unscoredReason: z.enum(["too_soon", "out_of_order", "after_lap_count"]).optional(),
 });
 
 export const resultRowSchema = z.strictObject({
@@ -27,7 +34,11 @@ export const resultRowSchema = z.strictObject({
   class: riderClassSchema.nullable(),
   /** True when the number was punched but is not on the event roster. */
   unknown: z.boolean(),
-  /** Distinct in-limit checks. Over-limit punches are not included. */
+  /**
+   * Counted passes. On a timed race or a one-lap race that is one distinct
+   * in-limit check. On a multi-lap race it is every counted pass, including
+   * the finish.
+   */
   checks: z.number().int().nonnegative(),
   /** Last in-limit punch minus start. Null when there is no scored punch. */
   elapsedSeconds: z.number().nullable(),

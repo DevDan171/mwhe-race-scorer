@@ -5,11 +5,13 @@ export function Keypad({
   disabled,
   onChange,
   onPunch,
+  actionLabel = "Punch",
 }: {
   value: string;
   disabled: boolean;
   onChange: (value: string) => void;
   onPunch: () => void;
+  actionLabel?: string;
 }) {
   function press(key: string) {
     if (disabled) return;
@@ -55,7 +57,7 @@ export function Keypad({
           disabled={disabled || value.length === 0}
           onClick={onPunch}
         >
-          Punch
+          {actionLabel}
         </button>
       </div>
     </div>

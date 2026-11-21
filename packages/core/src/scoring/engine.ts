@@ -1,6 +1,7 @@
 import { primaryRace, type Check } from "../schemas/race-package.js";
 import type { Disqualification, Penalty } from "../schemas/penalty.js";
 import type { Punch } from "../schemas/punch.js";
+import type { RiderStart, RowStart } from "../schemas/starts.js";
 import type {
   CheckResult,
   ResultRow,
@@ -10,6 +11,14 @@ import type {
 import { resultsPayloadSchema } from "../schemas/results.js";
 import type { StartTime } from "../schemas/start-time.js";
 import { PROTEST_WINDOW_MINUTES, SCHEMA_VERSION } from "../version.js";
+import { multiLapCount } from "./end-mode.js";
+import { assignLapPasses } from "./laps.js";
+import {
+  dedupeRiderStarts,
+  dedupeRowStarts,
+  riderClockFromTaps,
+  rowClockFromTaps,
+} from "./start-capture.js";
 import { planStartOrder } from "./start-order.js";
 import { parseIsoMs, secondsBetween } from "./time.js";
 import {
@@ -45,13 +54,18 @@ export function scoreRace(input: ScoreRaceInput): ScoreRaceResult {
   const course = primaryRace(parsed.race.races);
   const plan = planStartOrder(course, parsed.race.registrations);
   warnings.push(...plan.warnings);
+  const rowStarts = dedupeRowStarts(parsed.rowStarts);
+  const riderStarts = dedupeRiderStarts(parsed.riderStarts);
+  warnDuplicateStarts(rowStarts, riderStarts, warnings);
   const derivedStarts = new Map<number, string>();
   for (const row of plan.rows) {
-    if (!row.startedAt) continue;
-    for (const rider of row.riders) derivedStarts.set(rider.riderNumber, row.startedAt);
+    const tapped = rowClockFromTaps(row.rowNumber, rowStarts);
+    const startedAt = tapped?.startedAt ?? row.startedAt;
+    if (!startedAt) continue;
+    for (const rider of row.riders) derivedStarts.set(rider.riderNumber, startedAt);
   }
-  const timeLimitMinutes =
-    parsed.race.event.length.mode === "time" ? parsed.race.event.length.minutes : null;
+  const timeLimitMinutes = course.length.mode === "time" ? course.length.minutes : null;
+  const lapCount = multiLapCount(course.length);
   const disqualifications = resolveDisqualifications(parsed.disqualifications, warnings);
   const punches = dedupePunches(parsed.punches, warnings);
   const punchesByRider = groupBy(punches, (punch) => punch.riderNumber);
@@ -76,10 +90,18 @@ export function scoreRace(input: ScoreRaceInput): ScoreRaceResult {
         registration: registered.get(riderNumber),
         punches: punchesByRider.get(riderNumber) ?? [],
         penalties: penaltiesByRider.get(riderNumber) ?? [],
-        start: startForRider(riderNumber, starts, derivedStarts),
+        start: startForRider(
+          riderNumber,
+          starts,
+          derivedStarts,
+          riderClockFromTaps(riderNumber, riderStarts)?.startedAt,
+        ),
         disqualification: disqualifications.get(riderNumber),
         checksById,
         timeLimitMinutes,
+        lapCount,
+        minPassGapMs: parsed.minPassGapMs,
+        courseOrder: [...course.checks].sort((a, b) => a.order - b.order),
         warnings,
       }),
     );
@@ -132,9 +154,17 @@ function startForRider(
   riderNumber: number,
   starts: Map<number, StartTime>,
   derivedStarts: Map<number, string>,
+  riderStartAt: string | undefined,
 ): StartTime | undefined {
   const explicit = starts.get(riderNumber);
   if (explicit) return explicit;
+  if (riderStartAt) {
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      riderNumber,
+      startedAt: riderStartAt,
+    };
+  }
   const derived = derivedStarts.get(riderNumber);
   if (!derived) return undefined;
   return {
@@ -142,6 +172,40 @@ function startForRider(
     riderNumber,
     startedAt: derived,
   };
+}
+
+function warnDuplicateStarts(
+  rowStarts: readonly RowStart[],
+  riderStarts: readonly RiderStart[],
+  warnings: ScoringWarning[],
+): void {
+  const rows = new Set<number>();
+  for (const tap of rowStarts) {
+    if (tap.voided) continue;
+    const pool = rowStarts.filter(
+      (item) =>
+        !item.voided &&
+        item.row === tap.row &&
+        (item.source === "laptop") === (tap.source === "laptop"),
+    );
+    if (pool.length > 1 && !rows.has(tap.row)) {
+      rows.add(tap.row);
+      warnings.push({ code: "duplicate_row_start", row: tap.row });
+    }
+  }
+  const riders = new Set<number>();
+  for (const tap of riderStarts) {
+    if (tap.voided) continue;
+    if (
+      riderStarts.filter((item) => !item.voided && item.riderNumber === tap.riderNumber)
+        .length > 1
+    ) {
+      if (!riders.has(tap.riderNumber)) {
+        riders.add(tap.riderNumber);
+        warnings.push({ code: "duplicate_rider_start", riderNumber: tap.riderNumber });
+      }
+    }
+  }
 }
 
 function resolveDisqualifications(
@@ -195,6 +259,10 @@ interface ScoreRiderArgs {
   checksById: Map<string, Check>;
   /** Null on a lap race. There is no clock, including when laps were left blank. */
   timeLimitMinutes: number | null;
+  /** Set only when the race scores more than one lap. */
+  lapCount: number | null;
+  minPassGapMs: number;
+  courseOrder: readonly Check[];
   warnings: ScoringWarning[];
 }
 
@@ -270,6 +338,10 @@ function scoreRider(args: ScoreRiderArgs): ScoredRider {
     known.push({ punch, timestampMs });
   }
 
+  if (args.lapCount !== null && args.lapCount > 1) {
+    return scoreLapRider(args, known, startMs);
+  }
+
   const perCheck = new Map<
     string,
     { scoringMs: number | null; overLimitMs: number | null }
@@ -321,6 +393,116 @@ function scoreRider(args: ScoreRiderArgs): ScoredRider {
       number: args.riderNumber,
       class: riderClass,
       unknown,
+      checks: scoringChecks,
+      elapsedSeconds:
+        elapsedMs === null ? null : secondsBetween(startMs + elapsedMs, startMs),
+      penaltySeconds: penalty.totalSeconds,
+      overallPenaltySeconds: penalty.overallSeconds,
+      totalTimeSeconds: totalTimeMs === null ? null : totalTimeMs / 1000,
+      checkResults,
+      positionInClass: null,
+      positionOverall: null,
+      status,
+    },
+  };
+}
+
+function scoreLapRider(
+  args: ScoreRiderArgs,
+  known: Array<{ punch: Punch; timestampMs: number }>,
+  startMs: number,
+): ScoredRider {
+  const passes = assignLapPasses({
+    hits: known,
+    course: args.courseOrder,
+    lapCount: args.lapCount ?? 1,
+    minGapMs: args.minPassGapMs,
+  });
+  for (const pass of passes) {
+    if (pass.reason === "too_soon") {
+      args.warnings.push({
+        code: "pass_too_soon",
+        riderNumber: args.riderNumber,
+        uuid: pass.punch.uuid,
+        checkId: pass.punch.checkId,
+      });
+    }
+    if (pass.reason === "out_of_order") {
+      args.warnings.push({
+        code: "pass_out_of_order",
+        riderNumber: args.riderNumber,
+        uuid: pass.punch.uuid,
+        checkId: pass.punch.checkId,
+      });
+    }
+  }
+  const perCheck = new Map<
+    string,
+    { scoringMs: number | null; overLimitMs: number | null }
+  >();
+  for (const pass of passes) {
+    const current = perCheck.get(pass.punch.checkId) ?? {
+      scoringMs: null,
+      overLimitMs: null,
+    };
+    if (pass.counts && current.scoringMs === null) current.scoringMs = pass.timestampMs;
+    if (!pass.counts && current.overLimitMs === null)
+      current.overLimitMs = pass.timestampMs;
+    perCheck.set(pass.punch.checkId, current);
+  }
+  const penalty = summarizePenalties(args, perCheck);
+  const penaltyUsed = new Set<string>();
+  const lastCountedByLap = new Map<number, number>();
+  const checkResults: CheckResult[] = [];
+  let lastPunchMs: number | null = null;
+  let scoringChecks = 0;
+  for (const pass of passes) {
+    const check = args.checksById.get(pass.punch.checkId);
+    if (!check) continue;
+    if (pass.counts) {
+      scoringChecks += 1;
+      if (lastPunchMs === null || pass.timestampMs > lastPunchMs)
+        lastPunchMs = pass.timestampMs;
+    }
+    const previous = lastCountedByLap.get(pass.lap);
+    const cumulativeSeconds = secondsBetween(pass.timestampMs, startMs);
+    const segmentSeconds =
+      pass.counts && previous !== undefined
+        ? secondsBetween(pass.timestampMs, previous)
+        : pass.counts
+          ? cumulativeSeconds
+          : 0;
+    if (pass.counts) lastCountedByLap.set(pass.lap, pass.timestampMs);
+    const showPenalty = pass.counts && !penaltyUsed.has(pass.punch.checkId);
+    if (showPenalty) penaltyUsed.add(pass.punch.checkId);
+    checkResults.push({
+      checkId: pass.punch.checkId,
+      name: check.name,
+      order: check.order,
+      cumulativeSeconds,
+      segmentSeconds,
+      overLimit: false,
+      countsForScore: pass.counts,
+      penaltySeconds: showPenalty ? (penalty.byCheck.get(pass.punch.checkId) ?? 0) : 0,
+      lap: pass.lap,
+      ...(pass.reason ? { unscoredReason: pass.reason } : {}),
+    });
+  }
+  const elapsedMs = lastPunchMs === null ? null : lastPunchMs - startMs;
+  const totalTimeMs = elapsedMs === null ? null : elapsedMs + penalty.totalSeconds * 1000;
+  const status: ResultStatus = args.disqualification
+    ? "DQ"
+    : scoringChecks === 0
+      ? "DNF"
+      : "finished";
+  return {
+    totalTimeMs,
+    lastPunchMs,
+    row: {
+      name: args.registration?.name ?? "UNKNOWN",
+      number: args.riderNumber,
+      class: args.registration?.class ?? null,
+      unknown: args.registration === undefined,
       checks: scoringChecks,
       elapsedSeconds:
         elapsedMs === null ? null : secondsBetween(startMs + elapsedMs, startMs),

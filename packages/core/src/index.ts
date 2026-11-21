@@ -38,6 +38,16 @@ export {
 
 export { punchSchema, type Punch } from "./schemas/punch.js";
 export { startTimeSchema, type StartTime } from "./schemas/start-time.js";
+export {
+  riderStartSchema,
+  rowStartSchema,
+  startRowBriefSchema,
+  stationRoleSchema,
+  type RiderStart,
+  type RowStart,
+  type StartRowBrief,
+  type StationRole,
+} from "./schemas/starts.js";
 
 export {
   penaltySchema,
@@ -102,6 +112,7 @@ export { applyRosterDelta } from "./sync/apply-delta.js";
 export {
   DEFAULT_CLOCK_OFFSET_WARN_MS,
   DEFAULT_DOUBLE_TAP_WINDOW_MS,
+  DEFAULT_MIN_PASS_GAP_MS,
   MIN_ANDROID_API,
   QR_CHUNK_MAX_CHARS,
   SYNC_PORT,
@@ -121,9 +132,12 @@ export {
 export {
   assembleCheckpointFrames,
   assembleRosterFrames,
+  assembleStartFrames,
   checkpointProgress,
   encodeCheckpointQr,
   encodeRosterQr,
+  encodeStartQr,
+  readStartFrames,
   parseQrPayload,
   readCheckpointFrames,
   readRosterFrames,
@@ -143,13 +157,17 @@ export {
   newPairingSecret,
   pairingFromStation,
   secretsMatch,
+  setManualStart,
   setRoster,
+  setRowClock,
   storedFromHub,
   storedSyncStateSchema,
   stationRecordSchema,
   syncHubSchema,
   updateClockWarnMs,
   voidPunch,
+  voidRiderStart,
+  voidRowStart,
   type PairingInput,
   type StationRecord,
   type StoredSyncState,
@@ -286,6 +304,33 @@ export {
 } from "./site/mock-catalog.js";
 
 export { scoreRace, type ScoreRaceResult } from "./scoring/engine.js";
+export {
+  GITHUB_STATION_UPDATE_NAME,
+  bytesToBase64,
+  checksumMatches,
+  chooseStationUpdate,
+  compareAppVersions,
+  downloadVerifiedApk,
+  githubLatestStationManifestUrl,
+  githubStationManifestUrl,
+  hubStationManifest,
+  isNewerRelease,
+  parseStationUpdateManifest,
+  resolveStationApkUrl,
+  sha256Hex,
+  stationApkFileName,
+  stationUpdateIsAllowed,
+  stationUpdateManifestSchema,
+  type StationUpdateManifest,
+} from "./updates/station-update.js";
+export { raceEndWarning, multiLapCount } from "./scoring/end-mode.js";
+export { assignLapPasses, type AssignedPass } from "./scoring/laps.js";
+export {
+  dedupeRiderStarts,
+  dedupeRowStarts,
+  riderClockFromTaps,
+  rowClockFromTaps,
+} from "./scoring/start-capture.js";
 export {
   planStartOrder,
   rowStartedAt,

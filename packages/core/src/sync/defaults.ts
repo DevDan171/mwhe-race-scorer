@@ -16,6 +16,13 @@ export const DEFAULT_CLOCK_OFFSET_WARN_MS = 2_000;
 
 export const DEFAULT_DOUBLE_TAP_WINDOW_MS = 60_000;
 
+/**
+ * Minimum time between two counted passes of the same check. A faster
+ * repeat is kept and flagged, and it does not count. Review this 2 minute
+ * default before race day. Zero turns the flag off.
+ */
+export const DEFAULT_MIN_PASS_GAP_MS = 120_000;
+
 export const MIN_ANDROID_API = 26;
 
 export const SYNC_PORT = 8788;

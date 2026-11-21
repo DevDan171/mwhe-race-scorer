@@ -4,6 +4,7 @@ import {
   primaryRace,
   worstClockOffset,
   type StationPairing,
+  type StationRole,
 } from "@mwhe/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -21,6 +22,7 @@ export function Stations() {
   const [pairing, setPairing] = useState<StationPairing | null>(null);
   const [raceId, setRaceId] = useState("");
   const [checkId, setCheckId] = useState("");
+  const [role, setRole] = useState<StationRole>("check");
   const [hubUrl, setHubUrl] = useState("");
   const [importText, setImportText] = useState("");
   const [scanned, setScanned] = useState<string[]>([]);
@@ -144,18 +146,33 @@ export function Stations() {
               ))}
             </select>
           </Field>
-          <Field label="Check">
+          <Field label="Station">
             <select
-              value={checkId || race.checks[0]?.id || ""}
-              onChange={(event) => setCheckId(event.target.value)}
+              value={role}
+              onChange={(event) => {
+                const next = event.target.value;
+                setRole(next === "start" || next === "finish" ? next : "check");
+              }}
             >
-              {race.checks.map((check) => (
-                <option key={check.id} value={check.id}>
-                  {check.order}. {check.name}
-                </option>
-              ))}
+              <option value="start">Start</option>
+              <option value="check">Check</option>
+              <option value="finish">Finish</option>
             </select>
           </Field>
+          {role === "check" ? (
+            <Field label="Check">
+              <select
+                value={checkId || race.checks[0]?.id || ""}
+                onChange={(event) => setCheckId(event.target.value)}
+              >
+                {race.checks.map((check) => (
+                  <option key={check.id} value={check.id}>
+                    {check.order}. {check.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
           {urls.length > 1 ? (
             <Field label="Address on the QR code">
               <select
@@ -177,9 +194,15 @@ export function Stations() {
           disabled={!selectedUrl || !sync.ready}
           onClick={() =>
             void run(async () => {
-              const check = race.checks.find(
-                (entry) => entry.id === (checkId || race.checks[0]?.id),
-              );
+              const finish = [...race.checks].sort((a, b) => a.order - b.order).at(-1);
+              const check =
+                role === "start"
+                  ? { id: "start", name: "Start" }
+                  : role === "finish"
+                    ? finish
+                    : race.checks.find(
+                        (entry) => entry.id === (checkId || race.checks[0]?.id),
+                      );
               if (!check) throw new Error("Pick a check.");
               const payload = await sync.createPairing({
                 hubUrl: selectedUrl,
@@ -189,6 +212,15 @@ export function Stations() {
                 raceName: race.name,
                 checkId: check.id,
                 checkName: check.name,
+                role,
+                startRows:
+                  role === "start"
+                    ? race.startRows.map((row) => ({
+                        order: row.order,
+                        label: row.label,
+                        classes: row.classes,
+                      }))
+                    : [],
               });
               setPairing(payload);
             })
@@ -242,7 +274,11 @@ export function Stations() {
                 return (
                   <tr key={station.pairingId}>
                     <td>
-                      {station.checkName}
+                      {station.role === "start"
+                        ? "Start"
+                        : station.role === "finish"
+                          ? `Finish · ${station.checkName}`
+                          : station.checkName}
                       <div className="hint">{station.raceName}</div>
                     </td>
                     <td>{station.deviceId ? station.deviceId.slice(0, 8) : "Waiting"}</td>

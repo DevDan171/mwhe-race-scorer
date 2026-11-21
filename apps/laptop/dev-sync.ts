@@ -52,6 +52,11 @@ export function devSyncPlugin(): Plugin {
             dispatch(ready, req.method ?? "GET", url, req.headers, parsed),
           );
           res.statusCode = result.status;
+          if (result.body instanceof Uint8Array) {
+            res.setHeader("content-type", "application/vnd.android.package-archive");
+            res.end(Buffer.from(result.body));
+            return;
+          }
           res.setHeader("content-type", "application/json");
           res.end(JSON.stringify(result.body));
         } catch (error) {
@@ -137,6 +142,27 @@ function dispatch(
   if (path === "/__mwhe/settings") {
     return { status: 200, body: host.setClockWarnMs(Number(body.clockOffsetWarnMs)) };
   }
+  if (path === "/__mwhe/manual-start") {
+    return {
+      status: 200,
+      body: host.setManualStart(body.start as Parameters<SyncHost["setManualStart"]>[0]),
+    };
+  }
+  if (path === "/__mwhe/station-apk") {
+    const manifest = body.manifest;
+    const apkBase64 = String(body.apkBase64 ?? "");
+    host.setStationUpdate(
+      manifest as Parameters<SyncHost["setStationUpdate"]>[0],
+      base64ToBytes(apkBase64),
+    );
+    return { status: 200, body: { ok: true } };
+  }
+  if (path === "/__mwhe/row-clock") {
+    return {
+      status: 200,
+      body: host.setRowClock(body.start as Parameters<SyncHost["setRowClock"]>[0]),
+    };
+  }
   if (path === "/__mwhe/paper") {
     return {
       status: 200,
@@ -147,6 +173,11 @@ function dispatch(
     return { status: 200, body: host.voidPunch(String(body.uuid ?? "")) };
   }
   return { status: 404, body: { message: "Unknown station request." } };
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = Buffer.from(value, "base64");
+  return new Uint8Array(binary);
 }
 
 function setCors(res: Connect.ServerResponse) {

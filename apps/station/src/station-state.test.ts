@@ -20,8 +20,11 @@ import {
   loadStation,
   lockSetup,
   persistStation,
+  recordRiderStart,
+  recordRowGo,
   setDoubleTapWindow,
   voidLatestPunch,
+  voidLatestStart,
   type StationState,
 } from "./station-state";
 const DEVICE = "00000000-0000-4000-8000-0000000000d1";
@@ -155,7 +158,7 @@ describe("station punch store", () => {
     const first = decidePunch(liveState(), "1", NOW, false);
     if (!first.ok) throw new Error("expected a punch");
     const second = decidePunch(
-      { ...first.state, settings: { doubleTapWindowMs: 0 } },
+      { ...first.state, settings: { ...first.state.settings, doubleTapWindowMs: 0 } },
       "999",
       LATER,
       false,
@@ -191,5 +194,76 @@ describe("station punch store", () => {
       texts.map((text) => JSON.parse(text)),
     );
     expect(next.roster?.riders.map((rider) => rider.number)).toEqual([1, 510]);
+  });
+});
+
+function startPairing(): StationPairing {
+  return createPairing(emptySyncHub("0.4.0"), {
+    hubUrl: "http://127.0.0.1:8788",
+    eventId: "evt-1",
+    eventName: "Gnaw Bone",
+    raceId: "race-1",
+    raceName: "Championship",
+    checkId: "start",
+    checkName: "Start",
+    role: "start",
+    startRows: [
+      { order: 1, label: "Row 1", classes: ["Pro"] },
+      { order: 2, label: "Row 2", classes: ["A"] },
+    ],
+    now: "2026-06-14T14:59:58.000Z",
+    secret: "cd".repeat(32),
+    pairingId: "00000000-0000-4000-8000-0000000000a2",
+  }).payload;
+}
+
+describe("start and finish stations", () => {
+  it("records a row go, warns on a second tap, and voids the latest start", () => {
+    const locked = lockSetup(freshStation(DEVICE), startPairing(), NOW, "0.4.0");
+    const live = goLive(locked, "0.4.0");
+    expect(live.setup?.role).toBe("start");
+    const first = recordRowGo(live, 1, NOW, false);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const warned = recordRowGo(first.state, 1, LATER, false);
+    expect(warned.ok).toBe(false);
+    if (warned.ok || warned.reason !== "already") throw new Error("expected a warning");
+    const confirmed = recordRowGo(first.state, 1, LATER, true);
+    expect(confirmed.ok).toBe(true);
+    if (!confirmed.ok) return;
+    const late = recordRiderStart(
+      confirmed.state,
+      "42",
+      "2026-06-14T15:01:00.000Z",
+      false,
+    );
+    expect(late.ok).toBe(true);
+    if (!late.ok) return;
+    const undone = voidLatestStart(late.state);
+    expect(undone?.label).toBe("#42");
+    expect(undone?.state.riderStarts[0]?.voided).toBe(true);
+    expect(undone?.state.rowStarts.every((entry) => !entry.voided)).toBe(true);
+  });
+
+  it("locks a finish phone to the finish check and saves a finish punch", () => {
+    const payload = createPairing(emptySyncHub("0.4.0"), {
+      hubUrl: "http://127.0.0.1:8788",
+      eventId: "evt-1",
+      eventName: "Gnaw Bone",
+      raceId: "race-1",
+      raceName: "Championship",
+      checkId: "finish",
+      checkName: "Finish",
+      role: "finish",
+      now: "2026-06-14T14:59:58.000Z",
+      secret: "ef".repeat(32),
+      pairingId: "00000000-0000-4000-8000-0000000000a3",
+    }).payload;
+    const live = goLive(lockSetup(freshStation(DEVICE), payload, NOW, "0.4.0"), "0.4.0");
+    const saved = decidePunch(live, "7", NOW, false);
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+    expect(saved.punch.checkId).toBe("finish");
+    expect(live.setup?.role).toBe("finish");
   });
 });

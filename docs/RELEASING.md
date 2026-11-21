@@ -80,36 +80,52 @@ The repository has to stay public, or `latest.json` has to be downloadable witho
 
 ## Android station APK
 
-The same version tag attaches the phone APK next to the Windows installer. The file name is `mwhe-station-<version>.apk` when it is signed, or `mwhe-station-<version>-debug.apk` when the keystore secrets below are missing. A missing keystore does not fail the build and does not change `latest.json`. `latest.json` is still only the Windows installer.
+The same version tag attaches the phone APK next to the Windows installer. The signed file name is `mwhe-station-<version>.apk` (hyphens, no spaces), for example `mwhe-station-0.4.0.apk`. When the keystore secrets are missing, the file is `mwhe-station-<version>-debug.apk` instead. A missing keystore does not fail the build and does not change `latest.json`. `latest.json` is still only the Windows installer.
 
-Pull requests upload the same APK as the artifact `mwhe-station-android`.
+A signed release also publishes `station-update.json` next to the APK. It is three fields: `version`, `url`, and `sha256`. Phones and the laptop read it. A debug APK does not get that file. Debug builds are signed with a throwaway key that changes from computer to computer, so one debug APK cannot install over another, and a signed APK cannot install over a debug one. The phone says so on its setup screen.
 
-The laptop package and the station package are both `0.3.0` in this tree. Bump them together before you tag. A phone whose version does not match the laptop is refused at go-live.
+Pull requests upload the APK as the artifact `mwhe-station-android`. That artifact is a debug build unless the four secrets are set on the repository.
 
-Create the keystore once, on your own PC. It never goes in git. `.gitignore` already ignores `*.jks` and `*.keystore`.
+The laptop package and the station package are both `0.4.0` in this tree. Bump them together before you tag. A phone whose version does not match the laptop is refused at go-live.
+
+Phones that still have the 0.3.0 test build must be uninstalled once before the signed 0.4.0 APK will install. After that, the phone can update itself. It asks only when it is not recording. The person holding the phone taps Install. Nothing installs by itself. Android checks that the new file is signed with the same key as the app already on the phone.
+
+The laptop downloads the station APK for its own version the first time it can reach GitHub, then keeps that file. At the race, with no internet, a phone gets the update from the laptop over the travel-router Wi-Fi. Do that download at home before you leave. If the laptop has never been online since this version was released, it has no APK to hand out.
+
+### Make the signing key, on your Windows PC
+
+Do this once. The keystore never goes in git. `.gitignore` already ignores `*.jks` and `*.keystore`.
+
+Back up the keystore file and both passwords somewhere safe, such as a USB stick you keep at home. If you lose them, every phone has to uninstall the app before a new key will install. Do not paste the keystore, the base64, or the passwords into chat, email, or a GitHub issue.
+
+1. Install a JDK if you do not have one. [Temurin 21](https://adoptium.net/) is enough. Android Studio also includes `keytool`, at `C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe`. The steps below use `keytool` from a JDK that is on your PATH. If Windows says it cannot find `keytool`, use the full Android Studio path in the command instead.
+2. Open PowerShell.
+3. Create the key. It will ask for a store password, then a key password, then your name. The name can be `MWHE`. The other name fields can be left blank by pressing Enter. Type `yes` when it asks if the information is correct.
 
 ```powershell
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.android" | Out-Null
 keytool -genkeypair -v -keystore "$env:USERPROFILE\.android\mwhe-station.jks" -alias mwhe-station -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-Remember the store password, the key password, and the alias `mwhe-station`. Then copy the keystore as base64:
+4. Write down three things and put them with the backup: the store password, the key password, and the alias `mwhe-station`. They can be the same password if you want one thing to remember. Do not leave either password blank.
+5. Turn the keystore into one line of base64 and copy it. This is the only time that line should be on the clipboard. Paste it into the GitHub secret, then clear the clipboard.
 
 ```powershell
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.android\mwhe-station.jks")) | Set-Clipboard
 ```
 
-On GitHub open **Settings → Secrets and variables → Actions → New repository secret** and add all four. If any one is missing, the release attaches the debug APK instead.
+6. On GitHub open the repository, then **Settings → Secrets and variables → Actions → New repository secret**. Add all four secrets. The names have to match exactly:
 
 | Secret                      | What to paste                                      |
 | --------------------------- | -------------------------------------------------- |
-| `ANDROID_KEYSTORE_BASE64`   | The base64 from the command above, one long line   |
-| `ANDROID_KEYSTORE_PASSWORD` | The store password                                 |
+| `ANDROID_KEYSTORE_BASE64`   | The base64 from step 5, one long line              |
+| `ANDROID_KEYSTORE_PASSWORD` | The store password from step 3                     |
 | `ANDROID_KEY_ALIAS`         | `mwhe-station`, unless you typed a different alias |
-| `ANDROID_KEY_PASSWORD`      | The key password                                   |
+| `ANDROID_KEY_PASSWORD`      | The key password from step 3                       |
 
-`keytool` comes with a JDK. Temurin 21 is a fine choice. The alias and both passwords can be the same value if you want one thing to remember. Do not leave the passwords blank.
+If any one of those four is missing, the release attaches the debug APK and does not publish `station-update.json`. Phones cannot update from that debug file.
 
-The phone install is a sideload. There is no Play Store listing. The APK's oldest Android is Android 8.
+The phone install is a sideload. There is no Play Store listing. The APK's oldest Android is Android 8. The first time a phone installs an update from inside the app, Android asks you to allow MWHE Station to install unknown apps. Allow it, go back, and tap Download update again. You still confirm Install on the system screen.
 
 ## Azure Artifact Signing later
 

@@ -1,6 +1,6 @@
 apply plugin: 'com.android.application'
 
-def stationVersion = (project.findProperty("stationVersion") ?: "0.3.0").toString()
+def stationVersion = (project.findProperty("stationVersion") ?: "0.4.0").toString()
 def versionParts = stationVersion.tokenize('.')
 def versionCodeFromName = (versionParts[0] as int) * 10000 + (versionParts[1] as int) * 100 + (versionParts[2].tokenize('-')[0] as int)
 def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")

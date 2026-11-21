@@ -4,7 +4,7 @@ Tags are semantic versions: `vMAJOR.MINOR.PATCH`, with an optional prerelease (`
 
 `schemaVersion` in `@mwhe/core` is not the git tag. Bump `schemaVersion` when a stored document changes in a breaking way. Until 1.0, a breaking schema change should also bump the minor tag. After 1.0 it should bump the major tag.
 
-The laptop and the station packages are `0.3.0` together. A phone is not allowed to go live unless that version matches the laptop it pairs with. The release version is still the git tag. The Windows workflow writes the tag into the installer at build time. The Android workflow writes the tag into the APK the same way. Do not tag until both packages are the version you mean to ship.
+The laptop and the station packages are `0.4.0` together. A phone is not allowed to go live unless that version matches the laptop it pairs with. The release version is still the git tag. The Windows workflow writes the tag into the installer at build time. The Android workflow writes the tag into the APK the same way. Do not tag until both packages are the version you mean to ship.
 
 How to install the exe, and how to set updater keys or Azure signing, is in [install-windows.md](install-windows.md) and [RELEASING.md](RELEASING.md).
 
@@ -17,7 +17,8 @@ It installs, builds the laptop and station Vite bundles, builds the Windows NSIS
 - `mwhe-station-web-<tag>.tar.gz`
 - `NATIVE_BUILDS.txt`
 - `mwhe-station-<version>.apk`, or `mwhe-station-<version>-debug.apk` when the Android keystore secrets are not set
-- `latest.json` and a `.sig` file, only when the updater private key is set and `plugins.updater.pubkey` is the matching public key. `latest.json` points at the Windows installer only. The APK is not an updater payload.
+- `latest.json` and a `.sig` file, only when the updater private key is set and `plugins.updater.pubkey` is the matching public key. `latest.json` points at the Windows installer only.
+- `station-update.json` next to a signed `mwhe-station-<version>.apk`. It carries `version`, `url`, and `sha256`. A debug APK does not publish it. Phones use it to update. The Windows updater does not.
 
 `apps/laptop/src-tauri` wires the window, `tauri-plugin-sql`, `tauri-plugin-http`, the updater, and credential commands backed by the `keyring` crate with the `windows-native` feature. Rust 1.90 is required. The Windows workflow installs it. Ubuntu CI does not compile the shell.
 

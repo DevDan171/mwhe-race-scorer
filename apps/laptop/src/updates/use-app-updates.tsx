@@ -9,8 +9,11 @@ import {
   type ReactNode,
 } from "react";
 
+import { APP_VERSION } from "../app-version";
 import { isTauri } from "../platform";
+import { useSync } from "../sync/provider";
 import { useHub } from "../use-hub";
+import { cacheMatchingStationApk } from "./cache-station-apk";
 import { releaseNotesUrl, UPDATE_OFFLINE, updateErrorMessage } from "./messages";
 import {
   shouldCheckForUpdates,
@@ -53,6 +56,11 @@ const UpdatesContext = createContext<AppUpdates | null>(null);
 
 export function UpdatesProvider({ children }: { children: ReactNode }) {
   const hub = useHub();
+  const sync = useSync();
+  const saveApk = useRef(sync.setStationUpdate);
+  saveApk.current = sync.setStationUpdate;
+  const syncReady = useRef(sync.ready);
+  syncReady.current = sync.ready;
   const [now, setNow] = useState(() => Date.now());
   const paused = updatesArePaused({
     screen: hub.screen,
@@ -126,8 +134,8 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!isTauri()) return;
     const run = () => {
+      if (!syncReady.current) return;
       if (
         !shouldCheckForUpdates({
           online: navigator.onLine !== false,
@@ -137,7 +145,11 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       ) {
         return;
       }
-      void check(false);
+      if (isTauri()) void check(false);
+      void cacheMatchingStationApk({
+        version: APP_VERSION,
+        save: (manifest, apkBase64) => saveApk.current(manifest, apkBase64),
+      }).catch(() => undefined);
     };
     run();
     const timer = window.setInterval(run, UPDATE_CHECK_INTERVAL_MS);
@@ -146,7 +158,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       window.clearInterval(timer);
       window.removeEventListener("online", run);
     };
-  }, [check, paused]);
+  }, [check, paused, sync.ready]);
 
   const install = useCallback(() => {
     if (!offer || pausedRef.current || phase.kind === "downloading") return;
